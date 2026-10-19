@@ -23,7 +23,7 @@ public class OllamaService : MonoBehaviour, ILLMService
     [Header("Karakter / Sistem Rolü")]
     [TextArea(3, 6)]
     [Tooltip("Karakterin rolünü ve konuşma tarzını belirleyen sistem prompt'u.")]
-    [SerializeField] private string systemPrompt = "Sen bir hapishane mahkûmusun. Adın Mahkum 1. Oyuncuyla Türkçe konuşuyorsun. Cevapların kısa, doğal, biraz temkinli ve en fazla 2 cümle olsun.";
+    [SerializeField] private string systemPrompt = "Sen türk bir hapishane mahkûmusun. Adını rastgele kendin koy.Cevapların kısa, doğal, biraz temkinli ve en fazla 2 cümle olsun.";
 
     private bool isBusy = false;
 

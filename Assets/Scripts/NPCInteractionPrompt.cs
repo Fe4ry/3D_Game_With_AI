@@ -44,6 +44,7 @@ public class NPCInteractionPrompt : MonoBehaviour
     private bool hasLoggedTargetError = false;
     private bool hasLoggedServiceWarning = false;
     private bool hasLoggedBubbleWarning = false;
+    private Transform interactionTarget;
 
     private void Awake()
     {
@@ -73,7 +74,8 @@ public class NPCInteractionPrompt : MonoBehaviour
         }
 
         // Oyuncu ile Mahkum1 arasındaki mesafeyi ölç
-        float distance = Vector3.Distance(playerTransform.position, targetNPC.position);
+        Transform currentTarget = GetCurrentInteractionTarget();
+        float distance = Vector3.Distance(playerTransform.position, currentTarget.position);
 
         // 3 birim veya daha uzaktaysa görünmemeli, 3 birimden daha yakına geldiğinde görünmeli
         bool shouldBeVisible = distance < interactionDistance;
@@ -81,6 +83,7 @@ public class NPCInteractionPrompt : MonoBehaviour
         if (shouldBeVisible != isPlayerClose)
         {
             isPlayerClose = shouldBeVisible;
+            Debug.Log($"[NPCInteractionPrompt] Oyuncu: {playerTransform.position}, NPC hedefi ({currentTarget.name}): {currentTarget.position}, mesafe: {distance:F2}, prompt: {isPlayerClose}", this);
             SetPromptVisible(isPlayerClose);
         }
 
@@ -406,6 +409,26 @@ public class NPCInteractionPrompt : MonoBehaviour
         // 4. AI & Konuşma Balonu Referansları
         ResolveOllamaService();
         ResolveBubblePresenter();
+        GetCurrentInteractionTarget();
+    }
+
+    private Transform GetCurrentInteractionTarget()
+    {
+        if (targetNPC == null)
+        {
+            interactionTarget = null;
+            return null;
+        }
+
+        if (interactionTarget == null || !interactionTarget.IsChildOf(targetNPC))
+        {
+            Animator animator = targetNPC.GetComponentInChildren<Animator>(true);
+            interactionTarget = animator != null ? animator.transform : targetNPC;
+
+            Debug.Log($"[NPCInteractionPrompt] Etkileşim hedefi: {interactionTarget.name}, parent NPC: {targetNPC.name}, position: {interactionTarget.position}, Animator: {animator != null}", this);
+        }
+
+        return interactionTarget;
     }
 
     private void SetPromptVisible(bool visible)
@@ -468,7 +491,8 @@ public class NPCInteractionPrompt : MonoBehaviour
     {
         // Unity Editor Scene ekranında etkileşim yarıçapını sarı küre ile göster
         Gizmos.color = Color.yellow;
-        Vector3 origin = targetNPC != null ? targetNPC.position : transform.position;
+        Transform currentTarget = interactionTarget != null ? interactionTarget : targetNPC;
+        Vector3 origin = currentTarget != null ? currentTarget.position : transform.position;
         Gizmos.DrawWireSphere(origin, interactionDistance);
     }
 }
