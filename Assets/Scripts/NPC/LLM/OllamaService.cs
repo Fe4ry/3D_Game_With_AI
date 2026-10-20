@@ -28,7 +28,7 @@ public class OllamaService : MonoBehaviour, ILLMService
     [SerializeField] private string apiUrl = "http://localhost:11434/api/generate";
 
     [Tooltip("Kullanılacak Ollama model adı (örn: llama3.2).")]
-    [SerializeField] private string modelName = "llama3.2";
+    [SerializeField] private string modelName = "gemma3:4b"; 
 
     [Tooltip("İstek zaman aşımı süresi (saniye).")]
     [SerializeField] private float timeoutSeconds = 15f;
