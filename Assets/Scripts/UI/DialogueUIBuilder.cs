@@ -5,10 +5,19 @@ using TMPro;
 
 public class DialogueUIBuilder : MonoBehaviour
 {
-    [ContextMenu("Diyalog Arayüzünü Oluþtur")]
+    [ContextMenu("Diyalog Arayï¿½zï¿½nï¿½ Oluï¿½tur")]
     public void CreateDialogueUI()
     {
-        Canvas canvas = FindFirstObjectByType<Canvas>();
+        Canvas canvas = null;
+        Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (Canvas candidate in canvases)
+        {
+            if (candidate.renderMode != RenderMode.WorldSpace)
+            {
+                canvas = candidate;
+                break;
+            }
+        }
 
         if (canvas == null)
         {
@@ -40,21 +49,20 @@ public class DialogueUIBuilder : MonoBehaviour
         background.color = new Color(0.08f, 0.08f, 0.08f, 0.92f);
 
         CreateText(panel.transform, "NPCResponseText",
-            "Mahkûm: Bana yardým edebilir misin?",
+            "MahkÃ»mla ne yapmak istiyorsun?",
             new Vector2(0.05f, 0.62f),
             new Vector2(0.95f, 0.95f));
 
         string[] messages =
         {
-            "Sana yardým edeyim.",
-            "Merhaba.",
-            "Neden buradasýn?",
-            "Bana güvenebilirsin."
+            "YardÄ±m Et",
+            "Umursama",
+            "Hakaret Et"
         };
 
         for (int i = 0; i < messages.Length; i++)
         {
-            float top = 0.58f - i * 0.145f;
+            float top = 0.58f - i * 0.18f;
 
             GameObject buttonObject = new GameObject(
                 "DialogueButton" + (i + 1));
@@ -79,7 +87,7 @@ public class DialogueUIBuilder : MonoBehaviour
         }
 
         panel.SetActive(false);
-        Debug.Log("Diyalog arayüzü oluþturuldu.");
+        Debug.Log("Diyalog arayï¿½zï¿½ oluï¿½turuldu.");
     }
 
     private void CreateText(

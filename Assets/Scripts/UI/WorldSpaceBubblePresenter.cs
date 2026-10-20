@@ -186,22 +186,28 @@ public class WorldSpaceBubblePresenter : MonoBehaviour
         Vector2 padding = new Vector2(Mathf.Max(0f, bubblePadding.x), Mathf.Max(0f, bubblePadding.y));
         string text = messageText.text ?? string.Empty;
 
-        float preferredWidth = messageText.GetPreferredValues().x;
+        messageText.enableWordWrapping = true;
+        messageText.overflowMode = TextOverflowModes.Overflow;
+        bubbleScrollRect.content = messageRect;
+        bubbleScrollRect.viewport = backgroundRect;
+
+        float preferredWidth = messageText.GetPreferredValues(text, Mathf.Infinity, Mathf.Infinity).x;
         float width = Mathf.Clamp(preferredWidth + padding.x, minimumBubbleSize.x, maxWidth);
         float textWidth = Mathf.Max(1f, width - padding.x);
         float preferredHeight = messageText.GetPreferredValues(text, textWidth, float.MaxValue).y;
         float height = Mathf.Clamp(preferredHeight + padding.y, minimumBubbleSize.y, maxHeight);
-        float contentHeight = Mathf.Max(preferredHeight, height - padding.y);
+        float contentHeight = Mathf.Max(preferredHeight, height - padding.y) + padding.y;
 
         bubbleRect.sizeDelta = new Vector2(width, height);
         messageRect.anchorMin = new Vector2(0f, 1f);
         messageRect.anchorMax = new Vector2(1f, 1f);
         messageRect.pivot = new Vector2(0.5f, 1f);
         messageRect.anchoredPosition = new Vector2(0f, -padding.y * 0.5f);
-        messageRect.sizeDelta = new Vector2(-padding.x, contentHeight + padding.y);
+        messageRect.sizeDelta = new Vector2(-padding.x, contentHeight);
 
         Canvas.ForceUpdateCanvases();
         messageText.ForceMeshUpdate();
+        Canvas.ForceUpdateCanvases();
         bubbleScrollRect.StopMovement();
         bubbleScrollRect.verticalNormalizedPosition = 1f;
     }
