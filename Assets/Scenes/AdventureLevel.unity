@@ -4124,7 +4124,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   apiUrl: http://localhost:11434/api/generate
-  modelName: llama3.2
+  modelName: gemma3:4b
   timeoutSeconds: 15
   systemPrompt: "Sen bir hapishane mahk\xFBmusun. Ad\u0131n Mahkum 1. Oyuncuyla T\xFCrk\xE7e
     konu\u015Fuyorsun. Cevaplar\u0131n k\u0131sa, do\u011Fal, biraz temkinli ve en
