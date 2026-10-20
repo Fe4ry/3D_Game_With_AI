@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using TMPro;
+using UnityEngine.UI;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
@@ -37,7 +38,11 @@ public class NPCInteractionPrompt : MonoBehaviour
     [SerializeField] private WorldSpaceBubblePresenter bubblePresenter;
 
     [Tooltip("E tuşuna basıldığında karaktere iletilecek başlangıç konuşma promptu.")]
-    [SerializeField] private string interactionPrompt = "Seninle konuşmak istiyorum. Kimsin ve burası neresi?";
+    [SerializeField] private string interactionPrompt = "Merhaba, sana yardım etmek istiyorum. Benimle güvenli alana gelebilirsin, eğer istersen.";
+
+    private const string HelpMessage = "Seni bu hayattan kurtarmak, güvenli bir alana götürmek istiyorum. Benimle gelir misin?";
+    private const string IgnoreMessage = "Başka kapıya kardeşim.";
+    private const string InsultMessage = "Ne zorba bir insansın lan! Düzgün oyna şu oyunu";
 
     private bool isPlayerClose = false;
     private bool hasLoggedPlayerError = false;
@@ -45,11 +50,19 @@ public class NPCInteractionPrompt : MonoBehaviour
     private bool hasLoggedServiceWarning = false;
     private bool hasLoggedBubbleWarning = false;
     private Transform interactionTarget;
+    private GameObject dialoguePanel;
+    private Button[] choiceButtons = new Button[3];
+    private StarterAssets.StarterAssetsInputs playerInputs;
+    private bool isDialogueRequestInProgress;
+    private bool hasStartedConversation;
+    private bool isGameLost;
 
     private void Awake()
     {
         InitializeReferences();
+        InitializeDialogueUI();
         SetPromptVisible(false);
+        SetDialoguePanelVisible(false);
     }
 
     private void Start()
@@ -66,6 +79,8 @@ public class NPCInteractionPrompt : MonoBehaviour
 
     private void Update()
     {
+        if (isGameLost) return;
+
         if (targetNPC == null || playerTransform == null || playerTransform == targetNPC)
         {
             // Referanslar henüz atanmadıysa veya sahnede geç yüklendiyse tekrar kontrol et
@@ -84,7 +99,17 @@ public class NPCInteractionPrompt : MonoBehaviour
         {
             isPlayerClose = shouldBeVisible;
             Debug.Log($"[NPCInteractionPrompt] Oyuncu: {playerTransform.position}, NPC hedefi ({currentTarget.name}): {currentTarget.position}, mesafe: {distance:F2}, prompt: {isPlayerClose}", this);
-            SetPromptVisible(isPlayerClose);
+            SetPromptVisible(isPlayerClose && !hasStartedConversation);
+
+            if (!isPlayerClose)
+            {
+                SetDialoguePanelVisible(false);
+            }
+            else if (hasStartedConversation && !isDialogueRequestInProgress)
+            {
+                SetDialoguePanelVisible(true);
+                UnlockCursorForDialogue();
+            }
         }
 
         // Oyuncu menzildeyken E tuşuna basarsa konuşmayı başlat
@@ -115,7 +140,7 @@ public class NPCInteractionPrompt : MonoBehaviour
     public void TryStartDialogue()
     {
         // Oyuncu uzaklaştıysa konuşma başlatılamaz
-        if (!isPlayerClose) return;
+        if (!isPlayerClose || isGameLost || hasStartedConversation || isDialogueRequestInProgress) return;
 
         // Referanslar henüz çözülmediyse bulmayı dene
         if (ollamaService == null)
@@ -150,6 +175,11 @@ public class NPCInteractionPrompt : MonoBehaviour
             return;
         }
 
+        hasStartedConversation = true;
+        isDialogueRequestInProgress = true;
+        SetPromptVisible(false);
+        SetChoicesInteractable(false);
+
         // 3. WorldSpaceBubblePresenter kontrolü ve 'Düşünüyor...' durumu
         if (bubblePresenter == null)
         {
@@ -166,7 +196,248 @@ public class NPCInteractionPrompt : MonoBehaviour
         }
 
         // 4. Ollama'ya asenkron istek gönder (ana oyun döngüsü bloklanmaz)
-        ollamaService.RequestResponse(interactionPrompt, OnDialogueSuccess, OnDialogueError);
+        ollamaService.RequestResponse(interactionPrompt, OnInitialDialogueSuccess, OnInitialDialogueError);
+    }
+
+    private void OnInitialDialogueSuccess(string response)
+    {
+        isDialogueRequestInProgress = false;
+        OnDialogueSuccess(response);
+        SetDialoguePanelVisible(isPlayerClose);
+        SetChoicesInteractable(true);
+        if (isPlayerClose)
+        {
+            UnlockCursorForDialogue();
+        }
+    }
+
+    private void OnInitialDialogueError(string errorMessage)
+    {
+        isDialogueRequestInProgress = false;
+        hasStartedConversation = false;
+        OnDialogueError(errorMessage);
+        SetPromptVisible(isPlayerClose);
+    }
+
+    private void SelectHelp()
+    {
+        SendDialogueChoice(HelpMessage);
+    }
+
+    private void SelectIgnore()
+    {
+        SendDialogueChoice(IgnoreMessage);
+    }
+
+    private void SelectInsult()
+    {
+        if (isGameLost || isDialogueRequestInProgress || !hasStartedConversation || !isPlayerClose) return;
+        EnterLossState();
+    }
+
+    private void SendDialogueChoice(string playerMessage)
+    {
+        if (isGameLost || isDialogueRequestInProgress || !hasStartedConversation || !isPlayerClose) return;
+
+        if (ollamaService == null)
+        {
+            ResolveOllamaService();
+        }
+
+        if (ollamaService == null)
+        {
+            Debug.LogError("[NPCInteractionPrompt] Diyalog seçeneği gönderilemedi: OllamaService bulunamadı.", this);
+            OnDialogueError("AI servisi bağlı değil!");
+            return;
+        }
+
+        if (ollamaService.IsBusy) return;
+
+        isDialogueRequestInProgress = true;
+        SetChoicesInteractable(false);
+
+        if (bubblePresenter != null)
+        {
+            bubblePresenter.ShowThinking();
+        }
+
+        ollamaService.RequestResponse(playerMessage, OnChoiceDialogueSuccess, OnChoiceDialogueError);
+    }
+
+    private void OnChoiceDialogueSuccess(string response)
+    {
+        isDialogueRequestInProgress = false;
+        OnDialogueSuccess(response);
+        SetChoicesInteractable(true);
+    }
+
+    private void OnChoiceDialogueError(string errorMessage)
+    {
+        isDialogueRequestInProgress = false;
+        OnDialogueError(errorMessage);
+        SetChoicesInteractable(true);
+    }
+
+    private void EnterLossState()
+    {
+        if (isGameLost) return;
+
+        isGameLost = true;
+        isPlayerClose = false;
+        isDialogueRequestInProgress = false;
+        SetPromptVisible(false);
+        SetChoicesInteractable(false);
+        SetDialoguePanelVisible(false);
+        ShowGameOverMessage();
+
+        if (playerInputs != null)
+        {
+            playerInputs.cursorLocked = false;
+        }
+
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+        Time.timeScale = 0f;
+    }
+
+    private void ShowGameOverMessage()
+    {
+        Canvas canvas = GetScreenCanvas();
+        if (canvas == null)
+        {
+            Debug.LogError("[NPCInteractionPrompt] Mağlubiyet mesajı gösterilemedi: Screen Space Canvas bulunamadı.", this);
+            return;
+        }
+
+        Transform existingOverlay = canvas.transform.Find("DefeatOverlay");
+        if (existingOverlay != null)
+        {
+            existingOverlay.gameObject.SetActive(true);
+            return;
+        }
+
+        GameObject overlay = new GameObject("DefeatOverlay", typeof(RectTransform), typeof(Image));
+        overlay.transform.SetParent(canvas.transform, false);
+        overlay.transform.SetAsLastSibling();
+
+        RectTransform overlayRect = overlay.GetComponent<RectTransform>();
+        overlayRect.anchorMin = Vector2.zero;
+        overlayRect.anchorMax = Vector2.one;
+        overlayRect.offsetMin = Vector2.zero;
+        overlayRect.offsetMax = Vector2.zero;
+
+        Image background = overlay.GetComponent<Image>();
+        background.color = new Color(0.25f, 0.015f, 0.015f, 0.94f);
+
+        GameObject messageObject = new GameObject("DefeatMessage", typeof(RectTransform));
+        messageObject.transform.SetParent(overlay.transform, false);
+        RectTransform messageRect = messageObject.GetComponent<RectTransform>();
+        messageRect.anchorMin = new Vector2(0.08f, 0.35f);
+        messageRect.anchorMax = new Vector2(0.92f, 0.65f);
+        messageRect.offsetMin = Vector2.zero;
+        messageRect.offsetMax = Vector2.zero;
+
+        TextMeshProUGUI messageText = messageObject.AddComponent<TextMeshProUGUI>();
+        TextMeshProUGUI existingText = canvas.GetComponentInChildren<TextMeshProUGUI>(true);
+        if (existingText != null)
+        {
+            messageText.font = existingText.font;
+        }
+
+        messageText.text = InsultMessage;
+        messageText.fontSize = 42;
+        messageText.fontSizeMin = 26;
+        messageText.fontSizeMax = 42;
+        messageText.enableAutoSizing = true;
+        messageText.alignment = TextAlignmentOptions.Center;
+        messageText.color = Color.white;
+        messageText.fontStyle = FontStyles.Bold;
+        messageText.raycastTarget = false;
+    }
+
+    private void InitializeDialogueUI()
+    {
+        Canvas canvas = GetScreenCanvas();
+        if (canvas == null)
+        {
+            Debug.LogError("[NPCInteractionPrompt] Screen Space Canvas bulunamadı; diyalog seçenekleri bağlanamadı.", this);
+            return;
+        }
+
+        Transform panelTransform = canvas.transform.Find("DialoguePanel");
+        if (panelTransform == null)
+        {
+            Debug.LogError("[NPCInteractionPrompt] DialogueCanvas altında DialoguePanel bulunamadı.", this);
+            return;
+        }
+
+        dialoguePanel = panelTransform.gameObject;
+        TextMeshProUGUI heading = panelTransform.Find("NPCResponseText")?.GetComponent<TextMeshProUGUI>();
+        if (heading != null)
+        {
+            heading.text = "Mahkûmla ne yapmak istiyorsun?";
+        }
+
+        string[] labels = { "Yardım Et", "Umursama", "Hakaret Et" };
+        UnityEngine.Events.UnityAction[] actions = { SelectHelp, SelectIgnore, SelectInsult };
+        for (int i = 0; i < labels.Length; i++)
+        {
+            Transform buttonTransform = panelTransform.Find($"DialogueButton{i + 1}");
+            if (buttonTransform == null)
+            {
+                Debug.LogError($"[NPCInteractionPrompt] DialogueButton{i + 1} bulunamadı.", this);
+                continue;
+            }
+
+            Button button = buttonTransform.GetComponent<Button>();
+            TextMeshProUGUI buttonText = buttonTransform.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (button == null || buttonText == null)
+            {
+                Debug.LogError($"[NPCInteractionPrompt] DialogueButton{i + 1} için Button veya TextMeshProUGUI eksik.", this);
+                continue;
+            }
+
+            choiceButtons[i] = button;
+            buttonText.text = labels[i];
+            button.onClick.RemoveListener(actions[i]);
+            button.onClick.AddListener(actions[i]);
+        }
+
+        Transform extraButton = panelTransform.Find("DialogueButton4");
+        if (extraButton != null)
+        {
+            extraButton.gameObject.SetActive(false);
+        }
+    }
+
+    private void SetDialoguePanelVisible(bool visible)
+    {
+        if (dialoguePanel != null && dialoguePanel.activeSelf != visible)
+        {
+            dialoguePanel.SetActive(visible);
+        }
+    }
+
+    private void SetChoicesInteractable(bool interactable)
+    {
+        foreach (Button button in choiceButtons)
+        {
+            if (button != null)
+            {
+                button.interactable = interactable && !isGameLost;
+            }
+        }
+    }
+
+    private void UnlockCursorForDialogue()
+    {
+        if (playerInputs != null)
+        {
+            playerInputs.cursorLocked = false;
+        }
+
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     /// <summary>
@@ -364,6 +635,11 @@ public class NPCInteractionPrompt : MonoBehaviour
                 Debug.LogError("[NPCInteractionPrompt] Oyuncu (Player) bulunamadı! Lütfen Inspector üzerinden 'Player Transform' alanına oyuncunuzu atayın veya oyuncu nesnesine 'Player' Tag'ini verin.", this);
                 hasLoggedPlayerError = true;
             }
+        }
+
+        if (playerTransform != null && playerInputs == null)
+        {
+            playerInputs = playerTransform.GetComponent<StarterAssets.StarterAssetsInputs>();
         }
 
         // 3. UI Kontrolü (Yalnızca Screen Space Canvas kullanılır)
