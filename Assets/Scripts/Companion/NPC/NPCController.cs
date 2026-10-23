@@ -40,6 +40,13 @@ public void SayHello()
 }
 
 
+
+public void StartConversation()
+{
+    Talk("Merhaba. Seninle konuşmak istiyorum.");
+}
+
+
     private IEnumerator SendPlayerMessage(string playerMessage)
     {
         isWaitingForResponse = true;
