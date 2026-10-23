@@ -1,4 +1,3 @@
-
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
@@ -123,17 +122,17 @@ public class NPCController : MonoBehaviour
                 if (choiceNPCMessageText != null)
                     choiceNPCMessageText.text = decision.dialogue;
 
-                // NPC cevap verdiğinde paneli ve fare imlecini aç.
                 SetChoicePanelVisible(true);
 
                 Debug.Log(
-                    $"NPC: {decision.dialogue} | Karar: {decision.action} | İkna: {decision.persuaded}",
+                    $"NPC: {decision.dialogue} | " +
+                    $"Karar: {decision.action} | " +
+                    $"İkna: {decision.persuaded}",
                     this
                 );
             },
             error =>
             {
-                Debug.LogError(error, this);
                 ShowError("Ollama hatası:\n" + error);
             }
         );
@@ -155,16 +154,10 @@ public class NPCController : MonoBehaviour
             );
         }
 
-        if (visible)
-        {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-        }
-        else
-        {
-            Cursor.visible = false;
-            Cursor.lockState = CursorLockMode.Locked;
-        }
+        Cursor.visible = visible;
+        Cursor.lockState = visible
+            ? CursorLockMode.None
+            : CursorLockMode.Locked;
     }
 
     private void ShowError(string message)

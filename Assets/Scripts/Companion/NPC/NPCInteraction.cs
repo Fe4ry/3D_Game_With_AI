@@ -17,6 +17,12 @@ public class NPCInteraction : MonoBehaviour
 
     private void Start()
     {
+        if (player == null)
+            Debug.LogError("NPCInteraction: Player atanmamış!", this);
+
+        if (npcController == null)
+            Debug.LogError("NPCInteraction: NPCController atanmamış!", this);
+
         if (interactionPrompt != null)
         {
             interactionPrompt.SetActive(false);
@@ -24,7 +30,7 @@ public class NPCInteraction : MonoBehaviour
         else
         {
             Debug.LogWarning(
-                "InteractionPrompt atanmamış! Inspector'dan E ile konuşma yazısını bağla.",
+                "NPCInteraction: InteractionPrompt atanmamış!",
                 this
             );
         }
@@ -42,7 +48,7 @@ public class NPCInteraction : MonoBehaviour
 
         isNearby = distance <= interactionDistance;
 
-        // NPC'ye yaklaşınca E ile konuş yazısını göster.
+        // Yakındayken E ile konuş yazısını göster.
         if (interactionPrompt != null)
         {
             interactionPrompt.SetActive(
