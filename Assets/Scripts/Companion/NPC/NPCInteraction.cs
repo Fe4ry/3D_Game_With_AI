@@ -1,6 +1,5 @@
 
 using UnityEngine;
-using UnityEngine.UI;
 
 public class NPCInteraction : MonoBehaviour
 {
@@ -14,11 +13,21 @@ public class NPCInteraction : MonoBehaviour
     [SerializeField] private KeyCode interactionKey = KeyCode.E;
 
     private bool isNearby;
+    private bool conversationStarted;
 
     private void Start()
     {
         if (interactionPrompt != null)
+        {
             interactionPrompt.SetActive(false);
+        }
+        else
+        {
+            Debug.LogWarning(
+                "InteractionPrompt atanmamış! Inspector'dan E ile konuşma yazısını bağla.",
+                this
+            );
+        }
     }
 
     private void Update()
@@ -33,15 +42,25 @@ public class NPCInteraction : MonoBehaviour
 
         isNearby = distance <= interactionDistance;
 
+        // NPC'ye yaklaşınca E ile konuş yazısını göster.
         if (interactionPrompt != null)
-            interactionPrompt.SetActive(isNearby);
-
-        if (isNearby && Input.GetKeyDown(interactionKey))
         {
-            npcController.StartConversation();
+            interactionPrompt.SetActive(
+                isNearby && !conversationStarted
+            );
+        }
+
+        // E tuşuyla konuşmayı başlat.
+        if (isNearby &&
+            !conversationStarted &&
+            Input.GetKeyDown(interactionKey))
+        {
+            conversationStarted = true;
 
             if (interactionPrompt != null)
                 interactionPrompt.SetActive(false);
+
+            npcController.StartConversation();
         }
     }
 }

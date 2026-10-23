@@ -1,6 +1,7 @@
 
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class NPCController : MonoBehaviour
 {
@@ -10,12 +11,45 @@ public class NPCController : MonoBehaviour
     [Header("Diyalog")]
     [SerializeField] private DialogueUI dialogueUI;
 
+    [Header("Diyalog Seçim Ekranı")]
+    [SerializeField] private GameObject dialogueChoicePanel;
+    [SerializeField] private Text choiceNPCMessageText;
+    [SerializeField] private Button helpChoiceButton;
+    [SerializeField] private Button ignoreChoiceButton;
+    [SerializeField] private Button insultChoiceButton;
+
     [Header("NPC Kişiliği")]
     [TextArea(3, 6)]
     [SerializeField] private string personality =
         "Sen bir mahkumsun. Geçmişine ve kişiliğine uygun davran.";
 
     private bool isWaitingForResponse;
+
+    private void Awake()
+    {
+        SetChoicePanelVisible(false);
+
+        if (helpChoiceButton != null)
+            helpChoiceButton.onClick.AddListener(OnHelpSelected);
+
+        if (ignoreChoiceButton != null)
+            ignoreChoiceButton.onClick.AddListener(OnIgnoreSelected);
+
+        if (insultChoiceButton != null)
+            insultChoiceButton.onClick.AddListener(OnInsultSelected);
+    }
+
+    private void OnDestroy()
+    {
+        if (helpChoiceButton != null)
+            helpChoiceButton.onClick.RemoveListener(OnHelpSelected);
+
+        if (ignoreChoiceButton != null)
+            ignoreChoiceButton.onClick.RemoveListener(OnIgnoreSelected);
+
+        if (insultChoiceButton != null)
+            insultChoiceButton.onClick.RemoveListener(OnInsultSelected);
+    }
 
     public void Talk(string playerMessage)
     {
@@ -46,11 +80,25 @@ public class NPCController : MonoBehaviour
         Talk("Merhaba. Seninle konuşmak istiyorum.");
     }
 
+    private void OnHelpSelected()
+    {
+        Talk("Sana yardım etmek istiyorum. Benimle gelmeni kabul ediyor musun?");
+    }
+
+    private void OnIgnoreSelected()
+    {
+        Talk("Seninle ilgilenmiyorum. Kendi başının çaresine bak.");
+    }
+
+    private void OnInsultSelected()
+    {
+        Talk("Sen işe yaramaz ve zavallı birisin.");
+    }
+
     private IEnumerator SendPlayerMessage(string playerMessage)
     {
         isWaitingForResponse = true;
 
-        // İstek gönderilmeden önce konuşma balonunu göster.
         if (dialogueUI != null)
             dialogueUI.ShowThinking();
 
@@ -72,6 +120,12 @@ public class NPCController : MonoBehaviour
                 if (dialogueUI != null)
                     dialogueUI.ShowDialogue(decision.dialogue);
 
+                if (choiceNPCMessageText != null)
+                    choiceNPCMessageText.text = decision.dialogue;
+
+                // NPC cevap verdiğinde paneli ve fare imlecini aç.
+                SetChoicePanelVisible(true);
+
                 Debug.Log(
                     $"NPC: {decision.dialogue} | Karar: {decision.action} | İkna: {decision.persuaded}",
                     this
@@ -84,8 +138,33 @@ public class NPCController : MonoBehaviour
             }
         );
 
-        // İstek tamamlandı; artık tekrar konuşulabilir.
         isWaitingForResponse = false;
+    }
+
+    private void SetChoicePanelVisible(bool visible)
+    {
+        if (dialogueChoicePanel != null)
+        {
+            dialogueChoicePanel.SetActive(visible);
+        }
+        else
+        {
+            Debug.LogWarning(
+                "DialogueChoicePanel Inspector'da atanmamış!",
+                this
+            );
+        }
+
+        if (visible)
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+        else
+        {
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.Locked;
+        }
     }
 
     private void ShowError(string message)
