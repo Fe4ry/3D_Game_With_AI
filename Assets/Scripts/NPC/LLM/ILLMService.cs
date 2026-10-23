@@ -10,16 +10,15 @@ public interface ILLMService
 
     /// LLM'e prompt gönderir ve yanıtı coroutine üzerinden asenkron olarak bekler.
 
-    IEnumerator GenerateResponse(string prompt, Action<string> onSuccess, Action<string> onError);
+    IEnumerator GenerateResponse(string prompt, Action<NpcDecision> onSuccess, Action<string> onError);
 
 
     /// Doğrudan bir coroutine başlatarak isteği yürütür.
 
    
-    void RequestResponse(string prompt, Action<string> onSuccess, Action<string> onError);
+    void RequestResponse(string prompt, Action<NpcDecision> onSuccess, Action<string> onError);
 
     /// Servisin şu anda aktif bir istek yürütüp yürütmediği bilgisi.
 
     bool IsBusy { get; }
 }
-

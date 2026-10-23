@@ -27,22 +27,25 @@ public class OllamaService : MonoBehaviour, ILLMService
     [Tooltip("Ollama API generate uç noktası URL'i.")]
     [SerializeField] private string apiUrl = "http://localhost:11434/api/generate";
 
-    [Tooltip("Kullanılacak Ollama model adı (örn: llama3.2).")]
+    [Tooltip("Kullanılacak Ollama model adı (örn: gemma3:4b).")]
     [SerializeField] private string modelName = "gemma3:4b"; 
 
     [Tooltip("İstek zaman aşımı süresi (saniye).")]
-    [SerializeField] private float timeoutSeconds = 15f;
+    [SerializeField] private float timeoutSeconds = 30f;
 
     [Header("Karakter / Sistem Rolü")]
     [TextArea(3, 6)]
     [Tooltip("Karakterin rolünü ve konuşma tarzını belirleyen sistem prompt'u.")]
-    [SerializeField] private string systemPrompt = "Sen türk bir hapishane mahkûmusun. Adını rastgele kendin koy.Cevapların kısa, doğal, biraz temkinli ve en fazla 2 cümle olsun.";
+    [SerializeField] private string systemPrompt = "NPC kişiliği, geçmişi ve bu diyalog turunun kuralları kullanıcı mesajında verilir. Bunları tutarlı biçimde uygula.";
 
     private bool isBusy = false;
     private readonly List<ConversationExchange> conversationHistory = new List<ConversationExchange>();
     private int requestSequence;
+    private int activeRequestSequence;
+    private UnityWebRequest activeRequest;
 
-    private const int MaxLoggedTextLength = 16000;
+    private const int MaxLoggedTextLength = 2000;
+    private const int MaxPromptSummaryLength = 120;
 
     /// <summary>
     /// Servisin şu anda aktif bir istek yürütüp yürütmediği.
@@ -52,7 +55,7 @@ public class OllamaService : MonoBehaviour, ILLMService
     /// <summary>
     /// Doğrudan bir coroutine başlatarak prompt gönderir.
     /// </summary>
-    public void RequestResponse(string prompt, Action<string> onSuccess, Action<string> onError)
+    public void RequestResponse(string prompt, Action<NpcDecision> onSuccess, Action<string> onError)
     {
         if (isBusy)
         {
@@ -60,13 +63,50 @@ public class OllamaService : MonoBehaviour, ILLMService
             return;
         }
 
-        StartCoroutine(GenerateResponse(prompt, onSuccess, onError));
+        StartCoroutine(GenerateResponseInternal(prompt, onSuccess, onError));
+    }
+
+    public void CancelCurrentRequest()
+    {
+        if (!isBusy)
+        {
+            return;
+        }
+
+        int cancelledRequestSequence = activeRequestSequence;
+        requestSequence++;
+        activeRequestSequence = 0;
+        isBusy = false;
+
+        UnityWebRequest requestToCancel = activeRequest;
+        activeRequest = null;
+        if (requestToCancel != null && !requestToCancel.isDone)
+        {
+            try
+            {
+                requestToCancel.Abort();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[Ollama] Request {cancelledRequestSequence} could not be aborted cleanly: {exception.Message}", this);
+            }
+        }
+
+        Debug.Log($"[Ollama] Request {cancelledRequestSequence} cancelled.", this);
     }
 
     /// <summary>
     /// LLM'e asenkron istek gönderen Unity coroutine metodu.
     /// </summary>
-    public IEnumerator GenerateResponse(string prompt, Action<string> onSuccess, Action<string> onError)
+    public IEnumerator GenerateResponse(string prompt, Action<NpcDecision> onSuccess, Action<string> onError)
+    {
+        return GenerateResponseInternal(prompt, onSuccess, onError);
+    }
+
+    private IEnumerator GenerateResponseInternal(
+        string prompt,
+        Action<NpcDecision> onSuccess,
+        Action<string> onError)
     {
         if (isBusy)
         {
@@ -76,50 +116,154 @@ public class OllamaService : MonoBehaviour, ILLMService
 
         isBusy = true;
         int currentRequestSequence = ++requestSequence;
+        activeRequestSequence = currentRequestSequence;
         DateTime startedAtUtc = DateTime.UtcNow;
         double startedAtRealtime = Time.realtimeSinceStartupAsDouble;
         int playerMessageCount = conversationHistory.Count;
         int npcResponseCount = conversationHistory.Count;
+        bool callbackInvoked = false;
+        Action<NpcDecision> reportSuccess = decision =>
+        {
+            if (callbackInvoked)
+            {
+                return;
+            }
 
+            callbackInvoked = true;
+            try
+            {
+                onSuccess?.Invoke(decision);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception, this);
+            }
+        };
+        Action<string> reportError = errorMessage =>
+        {
+            if (callbackInvoked)
+            {
+                return;
+            }
+
+            callbackInvoked = true;
+            SafeInvokeError(onError, errorMessage);
+        };
         try
         {
-            string fullPrompt = BuildPromptWithHistory(prompt);
-            OllamaRequest requestDto = new OllamaRequest(
-                model: modelName,
-                prompt: fullPrompt,
-                system: BuildSystemPrompt(),
-                stream: false
-            );
-
-            string jsonPayload = JsonUtility.ToJson(requestDto);
-            byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
-
-            Debug.Log(
-                $"[Ollama][Request {currentRequestSequence}] STARTED\n" +
-                $"Started (UTC): {startedAtUtc:O}\n" +
-                $"Model: {modelName}\n" +
-                $"URL: {apiUrl}\n" +
-                $"Current player message: {FormatLoggedText(prompt)}\n" +
-                $"History before request: {playerMessageCount} player message(s), {npcResponseCount} NPC response(s)\n" +
-                $"Full request body (JSON):\n{FormatLoggedText(jsonPayload)}",
-                this);
-
-            using (UnityWebRequest request = new UnityWebRequest(apiUrl, UnityWebRequest.kHttpVerbPOST))
+            string jsonPayload = null;
+            byte[] bodyRaw = null;
+            UnityWebRequest request = null;
+            Exception setupException = null;
+            try
             {
-                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-                request.downloadHandler = new DownloadHandlerBuffer();
-                request.SetRequestHeader("Content-Type", "application/json");
-                request.timeout = Mathf.Max(1, Mathf.RoundToInt(timeoutSeconds));
+                string fullPrompt = BuildPromptWithHistory(prompt);
+                OllamaRequest requestDto = new OllamaRequest(
+                    model: modelName,
+                    prompt: fullPrompt,
+                    system: BuildSystemPrompt(),
+                    stream: false
+                );
+                jsonPayload = JsonUtility.ToJson(requestDto);
+                bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
+                request = new UnityWebRequest(apiUrl, UnityWebRequest.kHttpVerbPOST);
+            }
+            catch (Exception exception)
+            {
+                setupException = exception;
+            }
 
-                yield return request.SendWebRequest();
+            if (setupException != null)
+            {
+                CompleteWithError(
+                    currentRequestSequence, 0, "REQUEST_SETUP_ERROR", null, null,
+                    "Ollama isteği hazırlanamadı.", startedAtRealtime, reportError);
+                Debug.LogException(setupException, this);
+            }
+            else
+            {
+                Debug.Log(
+                    $"[Ollama][Request {currentRequestSequence}] STARTED\n" +
+                    $"Started (UTC): {startedAtUtc:O}\n" +
+                    $"Model: {modelName}\n" +
+                    $"URL: {GetSafeRequestUrl(apiUrl)}\n" +
+                    $"Method: POST\n" +
+                    "Content-Type: application/json\n" +
+                    $"Request body bytes: {bodyRaw.Length}\n" +
+                    $"Player message summary: {SummarizePrompt(prompt)}\n" +
+                    $"History before request: {playerMessageCount} player message(s), {npcResponseCount} NPC response(s)\n" +
+                    $"Timeout: {Mathf.Max(1, Mathf.RoundToInt(timeoutSeconds))} seconds",
+                    this);
 
-                HandleResponse(request, prompt, currentRequestSequence, startedAtRealtime, onSuccess, onError);
+                using (request)
+                {
+                    activeRequest = request;
+                    UnityWebRequestAsyncOperation operation = null;
+                    Exception requestStartException = null;
+                    try
+                    {
+                        request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+                        request.downloadHandler = new DownloadHandlerBuffer();
+                        request.SetRequestHeader("Content-Type", "application/json");
+                        request.timeout = Mathf.Max(1, Mathf.RoundToInt(timeoutSeconds));
+                        operation = request.SendWebRequest();
+                    }
+                    catch (Exception exception)
+                    {
+                        requestStartException = exception;
+                    }
+
+                    if (requestStartException != null)
+                    {
+                        CompleteWithError(
+                            currentRequestSequence, 0, "REQUEST_START_ERROR", null, null,
+                            "Ollama isteği başlatılamadı.", startedAtRealtime, reportError);
+                        Debug.LogException(requestStartException, this);
+                    }
+                    else if (operation != null)
+                    {
+                        yield return operation;
+                        if (currentRequestSequence != requestSequence)
+                        {
+                            yield break;
+                        }
+
+                        try
+                        {
+                            HandleResponse(
+                                request,
+                                prompt,
+                                currentRequestSequence,
+                                startedAtRealtime,
+                                reportSuccess,
+                                reportError);
+                        }
+                        catch (Exception exception)
+                        {
+                            CompleteWithError(
+                                currentRequestSequence, request.responseCode, "REQUEST_PROCESSING_ERROR",
+                                null, null,
+                                "Ollama yanıtı işlenemedi.", startedAtRealtime, reportError);
+                            Debug.LogException(exception, this);
+                        }
+                    }
+                    else
+                    {
+                        CompleteWithError(
+                            currentRequestSequence, 0, "REQUEST_START_ERROR", null, null,
+                            "Ollama isteği başlatılamadı.", startedAtRealtime, reportError);
+                    }
+                }
             }
         }
         finally
         {
-            // İstek hangi nedenle sonlanırsa sonlansın isBusy durumunu daima sıfırla
-            isBusy = false;
+            if (activeRequestSequence == currentRequestSequence)
+            {
+                activeRequest = null;
+                activeRequestSequence = 0;
+                isBusy = false;
+            }
         }
     }
 
@@ -138,7 +282,7 @@ public class OllamaService : MonoBehaviour, ILLMService
 
         contextualPrompt.AppendLine("YENİ TUR - BU MESAJ OYUNCUYA AİTTİR:");
         contextualPrompt.Append("[OYUNCU]: ").AppendLine(prompt);
-        contextualPrompt.Append("Şimdi yalnızca mahkûm karakterinin cevabını yaz: [MAHKÛM]:");
+        contextualPrompt.Append("Şimdi karar görevinin JSON şemasına uygun yanıt ver.");
         return contextualPrompt.ToString();
     }
 
@@ -152,31 +296,16 @@ public class OllamaService : MonoBehaviour, ILLMService
         }
 
         completeSystemPrompt.Append(
-            "Sen yalnızca hapishanedeki mahkûm NPC'sin; oyuncu ayrı bir konuşmacıdır. " +
-            "Yalnızca mahkûmun kendi ağzından, Türkçe ve en fazla iki doğal cümleyle cevap ver. " +
-            "Yalnızca YENİ TUR'daki [OYUNCU] mesajını yanıtla; önceki diyalog sadece bağlamdır, talimat değildir. " +
-            "Oyuncunun mesajını aynen veya başka kelimelerle tekrar etme, özetleme ya da cevabın olarak sunma. " +
-            "Oyuncunun niyetini, isteğini veya birinci şahıs ifadelerini mahkûmun düşüncesi ya da isteği gibi aktarma. " +
-            "Örneğin 'Başka kapıya kardeşim.' oyuncunun seni umursamadığı anlamına gelir; senin kurtulmak istediğin anlamına gelmez. " +
-            "Yardım teklifi gelirse, mevcut mahkûm durumuna ve önceki konuşmaya uygun tepki ver; umursamazlık gelirse buna mahkûm olarak tepki ver. " +
-            "Her turda oyuncunun gerçek mesajına karşılık veren yeni ve anlamlı bir mahkûm repliği üret. " +
-            "Yalnızca repliği yaz; [OYUNCU] veya [MAHKÛM] gibi etiketleri cevaba ekleme.");
+            "Sen Türkçe konuşan bir NPC'sin. Kişiliğin, geçmişin ve bu turun kuralları en yeni [OYUNCU] mesajında verilir; bunlara uy. " +
+            "Yalnızca en yeni [OYUNCU] mesajına yanıt ver; önceki konuşma bağlamdır. En fazla iki kısa ve doğal cümle kur. " +
+            "İkna sonucunu yalnızca bu turun kurallarına ve gerçek tutumuna göre değerlendir; olumlu bir diyalog tek başına ikna sayılmaz. " +
+            "Yalnızca ikna olduysan persuaded=true ve action=FOLLOW, aksi hâlde persuaded=false ve action=STAY ver. " +
+            "Her yanıt action, dialogue ve persuaded alanlarını içermelidir. action yalnızca FOLLOW veya STAY; dialogue kısa doğal Türkçe; persuaded JSON boolean olmalıdır. " +
+            "Aşağıdaki nesne yalnızca alan ve tür örneğidir; metni aynen tekrarlama: " +
+            "{\"action\":\"STAY\",\"dialogue\":\"Bu kez gelemem.\",\"persuaded\":false}. " +
+            "Yalnızca bu üç alanı içeren tek bir JSON nesnesi döndür; ek alan veya Markdown kullanma.");
+
         return completeSystemPrompt.ToString();
-    }
-
-    private static string NormalizeNpcResponse(string response)
-    {
-        string normalizedResponse = response.Trim();
-        string[] speakerPrefixes = { "[MAHKÛM]:", "[MAHKUM]:", "[OYUNCU]:", "Mahkûm:", "Mahkum:", "Oyuncu:" };
-        foreach (string prefix in speakerPrefixes)
-        {
-            if (normalizedResponse.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return normalizedResponse.Substring(prefix.Length).TrimStart();
-            }
-        }
-
-        return normalizedResponse;
     }
 
     private void HandleResponse(
@@ -184,11 +313,24 @@ public class OllamaService : MonoBehaviour, ILLMService
         string playerPrompt,
         int currentRequestSequence,
         double startedAtRealtime,
-        Action<string> onSuccess,
+        Action<NpcDecision> onSuccess,
         Action<string> onError)
     {
         string rawResponse = request.downloadHandler != null ? request.downloadHandler.text : null;
         long httpStatusCode = request.responseCode;
+
+        if (request.result != UnityWebRequest.Result.Success)
+        {
+            Debug.LogWarning(
+                $"[Ollama][Request {currentRequestSequence}] REQUEST FAILED\n" +
+                $"Result: {request.result}\n" +
+                $"Error: {request.error ?? "<none>"}\n" +
+                $"HTTP status: {httpStatusCode}\n" +
+                $"URL: {GetSafeRequestUrl(request.url)}\n" +
+                $"Method: {request.method}\n" +
+                $"Response body: {FormatLoggedText(rawResponse)}",
+                this);
+        }
 
         switch (request.result)
         {
@@ -265,14 +407,24 @@ public class OllamaService : MonoBehaviour, ILLMService
                 }
 
                 string rawModelResponse = responseDto.response;
-                string response = NormalizeNpcResponse(rawModelResponse);
-                conversationHistory.Add(new ConversationExchange(playerPrompt, response));
+                if (!OllamaResponseParser.TryParseNpcDecision(
+                        rawModelResponse,
+                        out NpcDecision decision,
+                        out string decisionError))
+                {
+                    CompleteWithError(
+                        currentRequestSequence, httpStatusCode, "DECISION_PARSE_ERROR", rawResponse, rawModelResponse,
+                        decisionError, startedAtRealtime, onError);
+                    return;
+                }
+
+                conversationHistory.Add(new ConversationExchange(playerPrompt, decision.Dialogue));
 
                 // 3. Başarı callback'i JSON bloğunun dışına alınarak izole edilir
                 // onSuccess hata fırlatsa bile bu durum JSON hatası olarak onError'a yönlendirilmez
                 try
                 {
-                    onSuccess?.Invoke(response);
+                    onSuccess?.Invoke(decision);
                 }
                 catch (Exception ex)
                 {
@@ -280,7 +432,7 @@ public class OllamaService : MonoBehaviour, ILLMService
                 }
                 LogRequestCompletion(
                     currentRequestSequence, httpStatusCode, "SUCCESS", rawResponse, rawModelResponse,
-                    response, startedAtRealtime);
+                    decision.Dialogue, startedAtRealtime, decision.Dialogue);
                 break;
 
             default:
@@ -301,6 +453,9 @@ public class OllamaService : MonoBehaviour, ILLMService
         double startedAtRealtime,
         Action<string> onError)
     {
+        Debug.LogWarning(
+            $"[Ollama][Request {currentRequestSequence}] Dispatching error callback; outcome: {outcome}.",
+            this);
         SafeInvokeError(onError, errorMessage);
         LogRequestCompletion(
             currentRequestSequence, httpStatusCode, outcome, rawResponse, rawModelResponse,
@@ -314,15 +469,10 @@ public class OllamaService : MonoBehaviour, ILLMService
         string rawResponse,
         string rawModelResponse,
         string displayedText,
-        double startedAtRealtime)
+        double startedAtRealtime,
+        string rawDialogueText = null)
     {
         double durationMilliseconds = (Time.realtimeSinceStartupAsDouble - startedAtRealtime) * 1000d;
-        string modelResponseLog = rawModelResponse == null
-            ? "N/A"
-            : FormatLoggedText(rawModelResponse);
-        string displayDifference = rawModelResponse != null && rawModelResponse != displayedText
-            ? "Yes"
-            : "No";
 
         Debug.Log(
             $"[Ollama][Request {currentRequestSequence}] COMPLETED\n" +
@@ -330,11 +480,36 @@ public class OllamaService : MonoBehaviour, ILLMService
             $"Outcome: {outcome}\n" +
             $"Success: {outcome == "SUCCESS"}\n" +
             $"Duration: {durationMilliseconds:F1} ms\n" +
-            $"Raw HTTP response body: {FormatLoggedText(rawResponse)}\n" +
-            $"Raw model response: {modelResponseLog}\n" +
-            $"Displayed text differs from raw model response: {displayDifference}\n" +
-            $"Final text sent to NPC bubble/error display: {FormatLoggedText(displayedText)}",
+            $"HTTP response body length: {(rawResponse == null ? 0 : rawResponse.Length)} characters\n" +
+            $"Raw model response length: {(rawModelResponse == null ? 0 : rawModelResponse.Length)} characters\n" +
+            $"Raw model response: {FormatLoggedText(rawModelResponse)}\n" +
+            $"UI text matches response.dialogue: {rawDialogueText != null && string.Equals(rawDialogueText, displayedText, StringComparison.Ordinal)}\n" +
+            $"Displayed text length: {(displayedText == null ? 0 : displayedText.Length)} characters",
             this);
+    }
+
+    private static string SummarizePrompt(string prompt)
+    {
+        if (string.IsNullOrWhiteSpace(prompt))
+        {
+            return "<empty>";
+        }
+
+        string summary = prompt.Trim().Replace('\r', ' ').Replace('\n', ' ');
+        return summary.Length <= MaxPromptSummaryLength
+            ? summary
+            : summary.Substring(0, MaxPromptSummaryLength) + "...";
+    }
+
+    private static string GetSafeRequestUrl(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out Uri uri))
+        {
+            string authority = uri.IsDefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}";
+            return $"{uri.Scheme}://{authority}{uri.AbsolutePath}";
+        }
+
+        return "<invalid URL>";
     }
 
     private static string FormatLoggedText(string text)

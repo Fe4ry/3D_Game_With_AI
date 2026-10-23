@@ -95,7 +95,7 @@ public class WorldSpaceBubblePresenter : MonoBehaviour
     /// <param name="response">Görüntülenecek cevap metni.</param>
     public void ShowResponse(string response)
     {
-        Debug.Log($"[BubbleTest] ShowResponse çağrıldı: {response}", this);
+        Debug.Log($"[BubbleTest] ShowResponse called ({response?.Length ?? 0} characters).", this);
         if (!ValidateReferences()) return;
 
         messageText.color = normalTextColor;
@@ -113,7 +113,9 @@ public class WorldSpaceBubblePresenter : MonoBehaviour
         if (!ValidateReferences()) return;
 
         messageText.color = errorTextColor;
-        messageText.text = errorMessage;
+        messageText.text = string.IsNullOrWhiteSpace(errorMessage)
+            ? "Şu an yanıt veremiyorum. Lütfen tekrar dene."
+            : errorMessage;
         SetVisible(true);
     }
 

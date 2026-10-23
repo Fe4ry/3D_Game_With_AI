@@ -1,4 +1,3 @@
-
 using UnityEngine;
 using UnityEngine.AI;
 
@@ -6,59 +5,112 @@ public class NPCFollowPlayer : MonoBehaviour
 {
     [SerializeField] private Transform player;
     [SerializeField] private float updateInterval = 0.2f;
+    [SerializeField, Min(0f)] private float followStoppingDistance = 1.4f;
 
     private NavMeshAgent agent;
     private float timer;
+    private bool isFollowing;
+    private bool hasLoggedSetupError;
+    private bool hasLoggedDestinationError;
+    private bool hasLoggedDestination;
 
     private void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
     }
 
-private void Update()
-{Debug.LogWarning("UPDATE TEST 123");
-Debug.LogWarning(
-    $"Agent konumu: {agent.transform.position}, " +
-    $"OnNavMesh: {agent.isOnNavMesh}"
-);
-    if (player == null)
+    public bool SetFollowing(bool following)
     {
-        Debug.LogWarning("PLAYER NULL");
-        return;
-    }
-Debug.LogWarning("UPDATE TEST 123");
-    if (agent == null)
-    {
-        Debug.LogWarning("AGENT NULL");
-        return;
+        if (following && (player == null || agent == null || !agent.isActiveAndEnabled || !agent.isOnNavMesh))
+        {
+            Debug.LogWarning(
+                "[NPCFollowPlayer] Takip için oyuncu, etkin NavMeshAgent ve NavMesh üzerindeki agent konumu gereklidir.",
+                this);
+            return false;
+        }
+
+        if (following)
+        {
+            agent.stoppingDistance = Mathf.Max(0f, followStoppingDistance);
+            if (!agent.SetDestination(player.position))
+            {
+                Debug.LogWarning("[NPCFollowPlayer] Oyuncuya giden NavMesh hedefi kabul edilmedi.", this);
+                return false;
+            }
+        }
+
+        bool wasFollowing = isFollowing;
+        isFollowing = following;
+        timer = 0f;
+        hasLoggedDestinationError = false;
+        hasLoggedSetupError = false;
+        hasLoggedDestination = following;
+
+        if (wasFollowing != following)
+        {
+            Debug.Log(
+                $"[NPCFollowPlayer] Following {(following ? "started" : "stopped")} for '{name}'. " +
+                $"Player: {(player != null ? player.name : "unassigned")}; " +
+                $"Agent enabled: {(agent != null && agent.isActiveAndEnabled)}; " +
+                $"Agent on NavMesh: {(agent != null && agent.isOnNavMesh)}.",
+                this);
+        }
+
+        if (!following && agent != null && agent.isActiveAndEnabled && agent.isOnNavMesh)
+        {
+            agent.ResetPath();
+        }
+
+        return true;
     }
 
-    if (!agent.isOnNavMesh)
+    private void Update()
     {
-        Debug.LogWarning("AGENT NAVMESH ÜZERİNDE DEĞİL");
-        return;
-    }
+        if (!isFollowing)
+        {
+            return;
+        }
 
-    timer += Time.deltaTime;
-Debug.LogWarning("UPDATE TEST 123");
-    if (timer >= updateInterval)
-    {
-        Debug.Log($"Oyuncu hedef konumu: {player.position}");
-Debug.Log($"Player: {player.name} | Konum: {player.position}");
-        bool accepted = agent.SetDestination(player.position);
-        Debug.Log(
-            $"Accepted: {accepted}, " +
-            $"OnNavMesh: {agent.isOnNavMesh}, " +
-            $"PathPending: {agent.pathPending}, " +
-            $"HasPath: {agent.hasPath}, " +
-            $"PathStatus: {agent.pathStatus}, " +
-            $"Remaining: {agent.remainingDistance}, " +
-            $"Speed: {agent.velocity.magnitude}"
-        );
+        if (player == null || agent == null || !agent.isActiveAndEnabled || !agent.isOnNavMesh)
+        {
+            if (!hasLoggedSetupError)
+            {
+                Debug.LogWarning(
+                    "[NPCFollowPlayer] Takip için oyuncu, etkin NavMeshAgent ve NavMesh üzerindeki agent konumu gereklidir.",
+                    this);
+                hasLoggedSetupError = true;
+            }
+
+            return;
+        }
+
+        hasLoggedSetupError = false;
+        timer += Time.deltaTime;
+        if (timer < Mathf.Max(0.05f, updateInterval))
+        {
+            return;
+        }
 
         timer = 0f;
+        if (!agent.SetDestination(player.position))
+        {
+            if (!hasLoggedDestinationError)
+            {
+                Debug.LogWarning("[NPCFollowPlayer] Oyuncuya giden NavMesh hedefi kabul edilmedi.", this);
+                hasLoggedDestinationError = true;
+            }
+
+            return;
+        }
+
+        if (!hasLoggedDestination)
+        {
+            Debug.Log(
+                $"[NPCFollowPlayer] NavMesh destination accepted for '{name}'; distance: {Vector3.Distance(transform.position, player.position):F2}.",
+                this);
+            hasLoggedDestination = true;
+        }
+
+        hasLoggedDestinationError = false;
     }
 }
-    
-}
-

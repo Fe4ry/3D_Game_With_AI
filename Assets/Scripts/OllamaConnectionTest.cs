@@ -51,7 +51,7 @@ public class OllamaConnectionTest : MonoBehaviour
                 try
                 {
                     OllamaResponse result = JsonUtility.FromJson<OllamaResponse>(responseText);
-                    Debug.Log($"[OllamaConnectionTest] Llama 3.2: {result?.response}");
+                    Debug.Log($"[OllamaConnectionTest] Gemm3:4b: {result?.response}");
                 }
                 catch (Exception ex)
                 {
@@ -65,7 +65,18 @@ public class OllamaConnectionTest : MonoBehaviour
                 string responseBody = request.downloadHandler != null ? request.downloadHandler.text : null;
                 string detailedError = ExtractOllamaErrorMessage(responseBody, request.error);
 
-                string warningMessage = $"[OllamaConnectionTest] Ollama isteği başarısız oldu (Sonuç: {request.result}, HTTP {request.responseCode}): {detailedError}";
+                string warningMessage =
+                    $"[OllamaConnectionTest] Ollama isteği başarısız oldu\n" +
+                    $"Result: {request.result}\n" +
+                    $"Error: {request.error ?? "<none>"}\n" +
+                    $"HTTP status: {request.responseCode}\n" +
+                    $"URL: {GetSafeRequestUrl(request.url)}\n" +
+                    $"Method: {request.method}\n" +
+                    $"Model: {model}\n" +
+                    $"Content-Type: application/json\n" +
+                    $"Timeout: {request.timeout} seconds\n" +
+                    $"Request body bytes: {body.Length}\n" +
+                    $"Response body: {FormatLoggedText(responseBody)}";
                 Debug.LogWarning(warningMessage, this);
 
                 // Hatayı görsel olarak göstermek için sahnedeki mevcut konuşma balonunu kullan
@@ -76,6 +87,34 @@ public class OllamaConnectionTest : MonoBehaviour
                 }
             }
         }
+    }
+
+    private static string GetSafeRequestUrl(string requestUrl)
+    {
+        if (Uri.TryCreate(requestUrl, UriKind.Absolute, out Uri uri))
+        {
+            string authority = uri.IsDefaultPort ? uri.Host : $"{uri.Host}:{uri.Port}";
+            return $"{uri.Scheme}://{authority}{uri.AbsolutePath}";
+        }
+
+        return "<invalid URL>";
+    }
+
+    private static string FormatLoggedText(string text)
+    {
+        const int maxLength = 2000;
+
+        if (string.IsNullOrEmpty(text))
+        {
+            return "<empty>";
+        }
+
+        if (text.Length <= maxLength)
+        {
+            return text;
+        }
+
+        return $"{text.Substring(0, maxLength)}...[truncated; original length {text.Length}]";
     }
 
     /// <summary>

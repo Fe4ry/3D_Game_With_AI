@@ -1,17 +1,26 @@
-using System;
 using UnityEngine;
 using TMPro;
-using UnityEngine.UI;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
 
 /// <summary>
-/// NPC yakınlık kontrolünü, ekran prompt'unu ("E - Konuş") ve E tuşuna basıldığında
-/// Ollama servisi ile Mahkum1 üzerindeki WorldSpaceBubblePresenter arasındaki etkileşimi yönetir.
+/// Diyalog akışını yönetir; yakınlık/girdi, UI, Ollama servisi ve NPC davranışını
+/// ilgili bileşenlere devreder.
 /// </summary>
 public class NPCInteractionPrompt : MonoBehaviour
 {
+    private const string PlayerFacingRequestError = "Şu an yanıt veremiyorum. Lütfen tekrar dene.";
+
+    private enum DialogueStage
+    {
+        First,
+        Second,
+        Final,
+        EgoistFinal,
+        Completed
+    }
+
     [Header("Hedef ve Oyuncu Ayarları")]
     [Tooltip("Mahkum1 veya etkileşime geçilecek NPC Transform'u. Boş bırakılırsa bu GameObject kullanılır.")]
     [SerializeField] private Transform targetNPC;
@@ -37,30 +46,43 @@ public class NPCInteractionPrompt : MonoBehaviour
     [Tooltip("Mahkum1 üzerindeki konuşma balonu bileşeni (boş bırakılırsa sahnede otomatik aranır).")]
     [SerializeField] private WorldSpaceBubblePresenter bubblePresenter;
 
+    [Tooltip("Ekran diyalog panelini sunan bileşen. Boş bırakılırsa aynı nesnede çözülür veya oluşturulur.")]
+    [SerializeField] private NPCDialogueView dialogueView;
+
+    private NPCPersonalityProfile personalityProfile;
+
     [Tooltip("E tuşuna basıldığında karaktere iletilecek başlangıç konuşma promptu.")]
-    [SerializeField] private string interactionPrompt = "Merhaba, sana yardım etmek istiyorum. Benimle güvenli alana gelebilirsin, eğer istersen.";
+    [SerializeField] private string interactionPrompt = "Merhaba, neden buradasın, bir sorunun var mı?";
 
-    private const string HelpMessage = "Seni bu hayattan kurtarmak, güvenli bir alana götürmek istiyorum. Benimle gelir misin?";
-    private const string IgnoreMessage = "Başka kapıya kardeşim.";
-    private const string InsultMessage = "Ne zorba bir insansın lan! Düzgün oyna şu oyunu";
+    private const string HelpMessage = "Sana yardım edebilirim! Güvenli bir alana götürmek istiyorum. Benimle gelir misin?";
+    private const string IgnoreMessage = "Seni umursamıyorum.";
+    private const string PersuadeMessage = "Benimle gelmeyi bir daha düşün. Sana yardım edebilirim.";
+    private const string DamageEgoMessage = "Bu kadar bencil olman komik.";
 
-    private bool isPlayerClose = false;
     private bool hasLoggedPlayerError = false;
     private bool hasLoggedTargetError = false;
     private bool hasLoggedServiceWarning = false;
     private bool hasLoggedBubbleWarning = false;
     private Transform interactionTarget;
-    private GameObject dialoguePanel;
-    private Button[] choiceButtons = new Button[3];
     private StarterAssets.StarterAssetsInputs playerInputs;
     private bool isDialogueRequestInProgress;
     private bool hasStartedConversation;
-    private bool isGameLost;
+    private bool hasCompletedDialogue;
+    private bool cursorStateCaptured;
+    private bool cursorWasLocked;
+    private readonly NPCInteractionController interactionController = new NPCInteractionController();
+    private int conversationSequence;
+    private DialogueStage dialogueStage = DialogueStage.First;
+    private bool IsPlayerClose => interactionController.IsPlayerClose;
 
     private void Awake()
     {
         InitializeReferences();
-        InitializeDialogueUI();
+        ResolveDialogueView();
+        ResolvePersonalityProfile();
+        dialogueView.Initialize();
+        dialogueView.InitializeInteractionPrompt(promptMessage, promptTextUI);
+        dialogueView.HideChoices();
         SetPromptVisible(false);
         SetDialoguePanelVisible(false);
     }
@@ -73,14 +95,28 @@ public class NPCInteractionPrompt : MonoBehaviour
 
     private void OnDisable()
     {
-        isPlayerClose = false;
+        bool cancelPendingRequest = isDialogueRequestInProgress;
+        interactionController.Reset();
         SetPromptVisible(false);
+        SetDialoguePanelVisible(false);
+        if (bubblePresenter != null)
+        {
+            bubblePresenter.Hide();
+        }
+
+        conversationSequence++;
+        hasStartedConversation = false;
+        isDialogueRequestInProgress = false;
+        if (cancelPendingRequest && ollamaService != null)
+        {
+            ollamaService.CancelCurrentRequest();
+        }
+
+        RestoreCursorAfterDialogue();
     }
 
     private void Update()
     {
-        if (isGameLost) return;
-
         if (targetNPC == null || playerTransform == null || playerTransform == targetNPC)
         {
             // Referanslar henüz atanmadıysa veya sahnede geç yüklendiyse tekrar kontrol et
@@ -88,22 +124,26 @@ public class NPCInteractionPrompt : MonoBehaviour
             if (targetNPC == null || playerTransform == null || playerTransform == targetNPC) return;
         }
 
-        // Oyuncu ile Mahkum1 arasındaki mesafeyi ölç
         Transform currentTarget = GetCurrentInteractionTarget();
-        float distance = Vector3.Distance(playerTransform.position, currentTarget.position);
-
-        // 3 birim veya daha uzaktaysa görünmemeli, 3 birimden daha yakına geldiğinde görünmeli
-        bool shouldBeVisible = distance < interactionDistance;
-
-        if (shouldBeVisible != isPlayerClose)
+        if (interactionController.UpdateProximity(playerTransform, currentTarget, interactionDistance, out float distance))
         {
-            isPlayerClose = shouldBeVisible;
-            Debug.Log($"[NPCInteractionPrompt] Oyuncu: {playerTransform.position}, NPC hedefi ({currentTarget.name}): {currentTarget.position}, mesafe: {distance:F2}, prompt: {isPlayerClose}", this);
-            SetPromptVisible(isPlayerClose && !hasStartedConversation);
+            Debug.Log($"[NPCInteractionPrompt] Oyuncu: {playerTransform.position}, NPC hedefi ({currentTarget.name}): {currentTarget.position}, mesafe: {distance:F2}, prompt: {IsPlayerClose}", this);
+            SetPromptVisible(IsPlayerClose && !hasStartedConversation && !hasCompletedDialogue);
 
-            if (!isPlayerClose)
+            if (!IsPlayerClose)
             {
-                SetDialoguePanelVisible(false);
+                if (hasStartedConversation)
+                {
+                    SetDialoguePanelVisible(false);
+                    RestoreCursorAfterDialogue();
+                    Debug.Log(
+                        "[NPCInteractionPrompt] Player left interaction range; keeping the conversation and pending response active.",
+                        this);
+                }
+                else
+                {
+                    SetDialoguePanelVisible(false);
+                }
             }
             else if (hasStartedConversation && !isDialogueRequestInProgress)
             {
@@ -112,26 +152,17 @@ public class NPCInteractionPrompt : MonoBehaviour
             }
         }
 
+        if (IsPlayerClose && hasStartedConversation && interactionController.IsCancelKeyPressed())
+        {
+            EndConversation();
+            return;
+        }
+
         // Oyuncu menzildeyken E tuşuna basarsa konuşmayı başlat
-        if (isPlayerClose && IsInteractKeyPressed())
+        if (IsPlayerClose && interactionController.IsInteractKeyPressed())
         {
             TryStartDialogue();
         }
-    }
-
-    /// <summary>
-    /// Hem yeni Input System hem de eski Input Manager ile uyumlu E tuşu algılayıcı.
-    /// Projedeki activeInputHandler ayarına göre en uygun girişi dinler.
-    /// </summary>
-    private bool IsInteractKeyPressed()
-    {
-#if ENABLE_INPUT_SYSTEM
-        if (Keyboard.current != null && Keyboard.current.eKey.wasPressedThisFrame)
-        {
-            return true;
-        }
-#endif
-        return Input.GetKeyDown(KeyCode.E);
     }
 
     /// <summary>
@@ -140,7 +171,7 @@ public class NPCInteractionPrompt : MonoBehaviour
     public void TryStartDialogue()
     {
         // Oyuncu uzaklaştıysa konuşma başlatılamaz
-        if (!isPlayerClose || isGameLost || hasStartedConversation || isDialogueRequestInProgress) return;
+        if (!IsPlayerClose || hasCompletedDialogue || hasStartedConversation || isDialogueRequestInProgress) return;
 
         // Referanslar henüz çözülmediyse bulmayı dene
         if (ollamaService == null)
@@ -151,6 +182,13 @@ public class NPCInteractionPrompt : MonoBehaviour
         if (bubblePresenter == null)
         {
             ResolveBubblePresenter();
+        }
+
+        ResolvePersonalityProfile();
+        if (personalityProfile == null)
+        {
+            Debug.LogError("[NPCInteractionPrompt] NPC kişilik profili oluşturulamadı.", this);
+            return;
         }
 
         // 1. OllamaService kontrolü
@@ -176,6 +214,8 @@ public class NPCInteractionPrompt : MonoBehaviour
         }
 
         hasStartedConversation = true;
+        int currentConversation = ++conversationSequence;
+        dialogueStage = DialogueStage.First;
         isDialogueRequestInProgress = true;
         SetPromptVisible(false);
         SetChoicesInteractable(false);
@@ -196,48 +236,93 @@ public class NPCInteractionPrompt : MonoBehaviour
         }
 
         // 4. Ollama'ya asenkron istek gönder (ana oyun döngüsü bloklanmaz)
-        ollamaService.RequestResponse(interactionPrompt, OnInitialDialogueSuccess, OnInitialDialogueError);
+        ollamaService.RequestResponse(
+            BuildRequestPrompt(interactionPrompt, true),
+            decision => OnInitialDialogueSuccess(currentConversation, decision),
+            errorMessage => OnInitialDialogueError(currentConversation, errorMessage));
     }
 
-    private void OnInitialDialogueSuccess(string response)
+    private void OnInitialDialogueSuccess(int currentConversation, NpcDecision decision)
     {
+        if (!IsCurrentConversation(currentConversation)) return;
+
         isDialogueRequestInProgress = false;
-        OnDialogueSuccess(response);
-        SetDialoguePanelVisible(isPlayerClose);
+        if (!IsValidDecision(decision))
+        {
+            OnInitialDialogueError(currentConversation, "NPC başlangıç diyaloğunda geçersiz bir karar döndürdü.");
+            return;
+        }
+
+        Debug.Log("[NPCInteractionPrompt] Initial dialogue displayed; NPC action is deferred until the player chooses an option.", this);
+        OnDialogueSuccess(decision.Dialogue);
+        SetDialogueText("Bir eylem seç.");
+        ShowFirstStageChoices();
+        SetDialoguePanelVisible(IsPlayerClose);
         SetChoicesInteractable(true);
-        if (isPlayerClose)
+        if (IsPlayerClose)
         {
             UnlockCursorForDialogue();
         }
     }
 
-    private void OnInitialDialogueError(string errorMessage)
+    private void OnInitialDialogueError(int currentConversation, string errorMessage)
     {
+        if (!IsCurrentConversation(currentConversation)) return;
+
+        conversationSequence++;
         isDialogueRequestInProgress = false;
         hasStartedConversation = false;
-        OnDialogueError(errorMessage);
-        SetPromptVisible(isPlayerClose);
+        dialogueStage = DialogueStage.First;
+        try
+        {
+            OnDialogueError(errorMessage);
+        }
+        finally
+        {
+            SetDialoguePanelVisible(false);
+            SetPromptVisible(IsPlayerClose && !hasCompletedDialogue);
+            RestoreCursorAfterDialogue();
+            SetChoicesInteractable(false);
+        }
     }
 
     private void SelectHelp()
     {
-        SendDialogueChoice(HelpMessage);
+        if (dialogueStage != DialogueStage.First) return;
+        SendDialogueChoice("Help", HelpMessage);
     }
 
     private void SelectIgnore()
     {
-        SendDialogueChoice(IgnoreMessage);
+        if (dialogueStage != DialogueStage.First && dialogueStage != DialogueStage.Final) return;
+        SendDialogueChoice("Ignore", IgnoreMessage);
     }
 
-    private void SelectInsult()
+    private void SelectPersuade()
     {
-        if (isGameLost || isDialogueRequestInProgress || !hasStartedConversation || !isPlayerClose) return;
-        EnterLossState();
+        if (dialogueStage != DialogueStage.Second && dialogueStage != DialogueStage.Final) return;
+        SendDialogueChoice("Persuade", PersuadeMessage);
     }
 
-    private void SendDialogueChoice(string playerMessage)
+    private void SelectDamageEgo()
     {
-        if (isGameLost || isDialogueRequestInProgress || !hasStartedConversation || !isPlayerClose) return;
+        if (dialogueStage != DialogueStage.EgoistFinal ||
+            personalityProfile == null ||
+            personalityProfile.Personality != NPCPersonality.Egoist)
+        {
+            return;
+        }
+
+        SendDialogueChoice("DamageEgo", DamageEgoMessage);
+    }
+
+    private void SendDialogueChoice(string choiceName, string playerMessage)
+    {
+        if (isDialogueRequestInProgress || !hasStartedConversation || !IsPlayerClose)
+        {
+            Debug.Log($"[NPCInteractionPrompt] {choiceName} choice was rejected by the current interaction state.", this);
+            return;
+        }
 
         if (ollamaService == null)
         {
@@ -255,182 +340,187 @@ public class NPCInteractionPrompt : MonoBehaviour
 
         isDialogueRequestInProgress = true;
         SetChoicesInteractable(false);
+        int currentConversation = conversationSequence;
+        Debug.Log($"[NPCInteractionPrompt] {choiceName} choice accepted; requesting NPC response.", this);
 
         if (bubblePresenter != null)
         {
             bubblePresenter.ShowThinking();
         }
 
-        ollamaService.RequestResponse(playerMessage, OnChoiceDialogueSuccess, OnChoiceDialogueError);
+        ollamaService.RequestResponse(
+            BuildRequestPrompt(playerMessage, false),
+            decision => OnChoiceDialogueSuccess(currentConversation, decision),
+            errorMessage => OnChoiceDialogueError(currentConversation, errorMessage));
     }
 
-    private void OnChoiceDialogueSuccess(string response)
+    private void OnChoiceDialogueSuccess(int currentConversation, NpcDecision decision)
     {
+        if (!IsCurrentConversation(currentConversation)) return;
+
+        Debug.Log(
+            $"[NPCInteractionPrompt] Choice response received; action: {(decision != null ? decision.Action.ToString() : "invalid")}; " +
+            $"persuaded: {(decision != null && decision.Persuaded)}.",
+            this);
+        if (!IsValidDecision(decision))
+        {
+            OnChoiceDialogueError(currentConversation, "NPC ikna yanıtı boş veya tutarsız.");
+            return;
+        }
+
+        bool wantsToFollow = decision.Persuaded && decision.Action == NpcAction.Follow;
+        if (wantsToFollow && !StartFollowing())
+        {
+            isDialogueRequestInProgress = false;
+            SetChoicesInteractable(true);
+            return;
+        }
+
+        OnDialogueSuccess(decision.Dialogue);
         isDialogueRequestInProgress = false;
-        OnDialogueSuccess(response);
+        if (wantsToFollow)
+        {
+            CompleteDialogue();
+            return;
+        }
+
+        if (dialogueStage == DialogueStage.First)
+        {
+            dialogueStage = DialogueStage.Second;
+            ShowSecondStageChoice();
+        }
+        else if (dialogueStage == DialogueStage.Second &&
+                 personalityProfile != null &&
+                 personalityProfile.Personality == NPCPersonality.Egoist)
+        {
+            dialogueStage = DialogueStage.EgoistFinal;
+            ShowEgoistFinalChoice();
+        }
+        else if (dialogueStage == DialogueStage.Second)
+        {
+            dialogueStage = DialogueStage.Final;
+            ShowFinalStageChoices();
+        }
+        else
+        {
+            CompleteDialogue();
+            return;
+        }
+
         SetChoicesInteractable(true);
     }
 
-    private void OnChoiceDialogueError(string errorMessage)
+    private void OnChoiceDialogueError(int currentConversation, string errorMessage)
     {
+        if (!IsCurrentConversation(currentConversation)) return;
+
         isDialogueRequestInProgress = false;
-        OnDialogueError(errorMessage);
-        SetChoicesInteractable(true);
+        try
+        {
+            OnDialogueError(errorMessage);
+        }
+        finally
+        {
+            SetChoicesInteractable(true);
+        }
     }
 
-    private void EnterLossState()
+    private void CompleteDialogue()
     {
-        if (isGameLost) return;
-
-        isGameLost = true;
-        isPlayerClose = false;
-        isDialogueRequestInProgress = false;
-        SetPromptVisible(false);
+        hasCompletedDialogue = true;
         SetChoicesInteractable(false);
+        conversationSequence++;
+        hasStartedConversation = false;
+        isDialogueRequestInProgress = false;
+        dialogueStage = DialogueStage.Completed;
         SetDialoguePanelVisible(false);
-        ShowGameOverMessage();
-
-        if (playerInputs != null)
-        {
-            playerInputs.cursorLocked = false;
-        }
-
-        Cursor.lockState = CursorLockMode.None;
-        Cursor.visible = true;
-        Time.timeScale = 0f;
+        SetPromptVisible(false);
+        RestoreCursorAfterDialogue();
     }
 
-    private void ShowGameOverMessage()
+    private bool IsCurrentConversation(int currentConversation)
     {
-        Canvas canvas = GetScreenCanvas();
-        if (canvas == null)
-        {
-            Debug.LogError("[NPCInteractionPrompt] Mağlubiyet mesajı gösterilemedi: Screen Space Canvas bulunamadı.", this);
-            return;
-        }
-
-        Transform existingOverlay = canvas.transform.Find("DefeatOverlay");
-        if (existingOverlay != null)
-        {
-            existingOverlay.gameObject.SetActive(true);
-            return;
-        }
-
-        GameObject overlay = new GameObject("DefeatOverlay", typeof(RectTransform), typeof(Image));
-        overlay.transform.SetParent(canvas.transform, false);
-        overlay.transform.SetAsLastSibling();
-
-        RectTransform overlayRect = overlay.GetComponent<RectTransform>();
-        overlayRect.anchorMin = Vector2.zero;
-        overlayRect.anchorMax = Vector2.one;
-        overlayRect.offsetMin = Vector2.zero;
-        overlayRect.offsetMax = Vector2.zero;
-
-        Image background = overlay.GetComponent<Image>();
-        background.color = new Color(0.25f, 0.015f, 0.015f, 0.94f);
-
-        GameObject messageObject = new GameObject("DefeatMessage", typeof(RectTransform));
-        messageObject.transform.SetParent(overlay.transform, false);
-        RectTransform messageRect = messageObject.GetComponent<RectTransform>();
-        messageRect.anchorMin = new Vector2(0.08f, 0.35f);
-        messageRect.anchorMax = new Vector2(0.92f, 0.65f);
-        messageRect.offsetMin = Vector2.zero;
-        messageRect.offsetMax = Vector2.zero;
-
-        TextMeshProUGUI messageText = messageObject.AddComponent<TextMeshProUGUI>();
-        TextMeshProUGUI existingText = canvas.GetComponentInChildren<TextMeshProUGUI>(true);
-        if (existingText != null)
-        {
-            messageText.font = existingText.font;
-        }
-
-        messageText.text = InsultMessage;
-        messageText.fontSize = 42;
-        messageText.fontSizeMin = 26;
-        messageText.fontSizeMax = 42;
-        messageText.enableAutoSizing = true;
-        messageText.alignment = TextAlignmentOptions.Center;
-        messageText.color = Color.white;
-        messageText.fontStyle = FontStyles.Bold;
-        messageText.raycastTarget = false;
+        return hasStartedConversation && currentConversation == conversationSequence;
     }
 
-    private void InitializeDialogueUI()
+    private void EndConversation()
     {
-        Canvas canvas = GetScreenCanvas();
-        if (canvas == null)
+        bool cancelPendingRequest = isDialogueRequestInProgress;
+        conversationSequence++;
+        hasStartedConversation = false;
+        isDialogueRequestInProgress = false;
+        if (cancelPendingRequest && ollamaService != null)
         {
-            Debug.LogError("[NPCInteractionPrompt] Screen Space Canvas bulunamadı; diyalog seçenekleri bağlanamadı.", this);
+            ollamaService.CancelCurrentRequest();
+        }
+
+        dialogueStage = DialogueStage.First;
+        ShowFirstStageChoices();
+        SetDialoguePanelVisible(false);
+        if (bubblePresenter != null)
+        {
+            bubblePresenter.Hide();
+        }
+
+        SetDialogueText("Mahkûmla ne yapmak istiyorsun?");
+        SetPromptVisible(IsPlayerClose && !hasCompletedDialogue);
+        RestoreCursorAfterDialogue();
+        SetChoicesInteractable(false);
+    }
+
+    private void ResolveDialogueView()
+    {
+        if (dialogueView == null)
+        {
+            dialogueView = GetComponent<NPCDialogueView>();
+        }
+
+        if (dialogueView == null)
+        {
+            dialogueView = gameObject.AddComponent<NPCDialogueView>();
+        }
+    }
+
+    private void ResolvePersonalityProfile()
+    {
+        if (personalityProfile != null || targetNPC == null)
+        {
             return;
         }
 
-        Transform panelTransform = canvas.transform.Find("DialoguePanel");
-        if (panelTransform == null)
+        personalityProfile = targetNPC.GetComponent<NPCPersonalityProfile>();
+        if (personalityProfile == null)
         {
-            Debug.LogError("[NPCInteractionPrompt] DialogueCanvas altında DialoguePanel bulunamadı.", this);
-            return;
-        }
-
-        dialoguePanel = panelTransform.gameObject;
-        TextMeshProUGUI heading = panelTransform.Find("NPCResponseText")?.GetComponent<TextMeshProUGUI>();
-        if (heading != null)
-        {
-            heading.text = "Mahkûmla ne yapmak istiyorsun?";
-        }
-
-        string[] labels = { "Yardım Et", "Umursama", "Hakaret Et" };
-        UnityEngine.Events.UnityAction[] actions = { SelectHelp, SelectIgnore, SelectInsult };
-        for (int i = 0; i < labels.Length; i++)
-        {
-            Transform buttonTransform = panelTransform.Find($"DialogueButton{i + 1}");
-            if (buttonTransform == null)
-            {
-                Debug.LogError($"[NPCInteractionPrompt] DialogueButton{i + 1} bulunamadı.", this);
-                continue;
-            }
-
-            Button button = buttonTransform.GetComponent<Button>();
-            TextMeshProUGUI buttonText = buttonTransform.GetComponentInChildren<TextMeshProUGUI>(true);
-            if (button == null || buttonText == null)
-            {
-                Debug.LogError($"[NPCInteractionPrompt] DialogueButton{i + 1} için Button veya TextMeshProUGUI eksik.", this);
-                continue;
-            }
-
-            choiceButtons[i] = button;
-            buttonText.text = labels[i];
-            button.onClick.RemoveListener(actions[i]);
-            button.onClick.AddListener(actions[i]);
-        }
-
-        Transform extraButton = panelTransform.Find("DialogueButton4");
-        if (extraButton != null)
-        {
-            extraButton.gameObject.SetActive(false);
+            personalityProfile = targetNPC.gameObject.AddComponent<NPCPersonalityProfile>();
         }
     }
 
     private void SetDialoguePanelVisible(bool visible)
     {
-        if (dialoguePanel != null && dialoguePanel.activeSelf != visible)
+        if (dialogueView != null)
         {
-            dialoguePanel.SetActive(visible);
+            dialogueView.SetPanelVisible(visible);
         }
     }
 
     private void SetChoicesInteractable(bool interactable)
     {
-        foreach (Button button in choiceButtons)
+        if (dialogueView != null)
         {
-            if (button != null)
-            {
-                button.interactable = interactable && !isGameLost;
-            }
+            dialogueView.SetChoicesInteractable(interactable);
         }
     }
 
     private void UnlockCursorForDialogue()
     {
+        if (!cursorStateCaptured)
+        {
+            cursorWasLocked = playerInputs != null
+                ? playerInputs.cursorLocked
+                : Cursor.lockState == CursorLockMode.Locked;
+            cursorStateCaptured = true;
+        }
+
         if (playerInputs != null)
         {
             playerInputs.cursorLocked = false;
@@ -438,6 +528,82 @@ public class NPCInteractionPrompt : MonoBehaviour
 
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+    }
+
+    private void RestoreCursorAfterDialogue()
+    {
+        if (!cursorStateCaptured) return;
+
+        if (playerInputs != null)
+        {
+            playerInputs.cursorLocked = cursorWasLocked;
+        }
+
+        Cursor.lockState = cursorWasLocked ? CursorLockMode.Locked : CursorLockMode.None;
+        Cursor.visible = !cursorWasLocked;
+        cursorStateCaptured = false;
+    }
+
+    private void ShowFirstStageChoices()
+    {
+        if (dialogueView != null)
+        {
+            dialogueView.ShowFirstStageChoices(SelectHelp, SelectIgnore);
+        }
+    }
+
+    private void ShowSecondStageChoice()
+    {
+        if (dialogueView != null)
+        {
+            dialogueView.ShowSecondStageChoice(SelectPersuade);
+        }
+    }
+
+    private void ShowFinalStageChoices()
+    {
+        if (dialogueView != null)
+        {
+            dialogueView.ShowFinalStageChoices(SelectPersuade, SelectIgnore);
+        }
+    }
+
+    private void ShowEgoistFinalChoice()
+    {
+        if (dialogueView != null)
+        {
+            dialogueView.ShowEgoistFinalChoice(SelectDamageEgo);
+        }
+    }
+
+    private string BuildRequestPrompt(string playerMessage, bool isIntroduction)
+    {
+        ResolvePersonalityProfile();
+        string characterContext = isIntroduction
+            ? $"SABİT NPC KİŞİLİĞİ VE GEÇMİŞİ: {personalityProfile.GetCharacterContext()}\n"
+            : "Önceki konuşma geçmişinde verilen NPC kişiliğini ve geçmişini koru.\n";
+        string stageInstructions = dialogueStage switch
+        {
+            DialogueStage.First => "İlk aşamadasın; oyuncu yardım etme veya umursamama eylemini seçti. Kişiliğini ve konuşma bağlamını değerlendirip ikna sonucuna kendin karar ver.",
+            DialogueStage.Second => "İkinci aşamadasın; oyuncu seni ikna etmeye çalıştı. Kişiliğini ve konuşma bağlamını değerlendirip ikna sonucuna kendin karar ver.",
+            DialogueStage.Final => "Son aşamadasın; oyuncu ikna etme veya umursamama eylemini seçti. Kişiliğini ve konuşma bağlamını değerlendirip ikna sonucuna kendin karar ver.",
+            DialogueStage.EgoistFinal => "Son aşamadasın; Egoist kişiliğindeki NPC için oyuncu egonu zedeleme eylemini seçti. Bu eylemin etkisini kişiliğine ve konuşma bağlamına göre değerlendirip ikna sonucuna kendin karar ver.",
+            _ => "Bu konuşma tamamlandı; yeni karar verme."
+        };
+        string purpose = isIntroduction
+            ? "Kendini kişiliğine ve geçmişine uygun, kısa ve doğal biçimde tanıt. Henüz oyuncu seçeneği seçilmediği için FOLLOW kararı verme."
+            : "En son oyuncu mesajına karşılık kısa, doğal bir Türkçe diyalog üret ve istenen karar alanlarını doğru doldur.";
+
+        return $"{characterContext}DİYALOG AŞAMASI: {stageInstructions}\n" +
+               $"{purpose}\nOYUNCU MESAJI: {playerMessage}";
+    }
+
+    private void SetDialogueText(string text)
+    {
+        if (dialogueView != null)
+        {
+            dialogueView.SetDialogueText(text);
+        }
     }
 
     /// <summary>
@@ -451,8 +617,33 @@ public class NPCInteractionPrompt : MonoBehaviour
         }
         else
         {
-            Debug.Log($"[NPCInteractionPrompt] Mahkum1 Cevabı: {response}");
+            Debug.Log($"[NPCInteractionPrompt] Model response received ({response?.Length ?? 0} characters); no bubble presenter is assigned.", this);
         }
+    }
+
+    private bool StartFollowing()
+    {
+        NPCFollowPlayer follower = targetNPC != null ? targetNPC.GetComponent<NPCFollowPlayer>() : null;
+        if (follower == null || !follower.SetFollowing(true))
+        {
+            const string errorMessage = "NPC şu anda oyuncuyu takip edemiyor.";
+            Debug.LogWarning($"[NPCInteractionPrompt] {errorMessage}", this);
+            OnDialogueError(errorMessage);
+            return false;
+        }
+
+        Debug.Log(
+            $"[NPCInteractionPrompt] NPC '{targetNPC.name}' now follows player '{playerTransform?.name ?? "unassigned"}'.",
+            this);
+        return true;
+    }
+
+    private static bool IsValidDecision(NpcDecision decision)
+    {
+        return decision != null &&
+               !string.IsNullOrWhiteSpace(decision.Dialogue) &&
+               (decision.Action == NpcAction.Follow || decision.Action == NpcAction.Stay) &&
+               decision.Persuaded == (decision.Action == NpcAction.Follow);
     }
 
     /// <summary>
@@ -460,13 +651,14 @@ public class NPCInteractionPrompt : MonoBehaviour
     /// </summary>
     private void OnDialogueError(string errorMessage)
     {
+        Debug.LogWarning($"[NPCInteractionPrompt] Dialogue request failed: {errorMessage}", this);
         if (bubblePresenter != null)
         {
-            bubblePresenter.ShowError(errorMessage);
+            bubblePresenter.ShowError(PlayerFacingRequestError);
         }
         else
         {
-            Debug.LogError($"[NPCInteractionPrompt] Ollama Hatası: {errorMessage}");
+            Debug.LogError($"[NPCInteractionPrompt] Ollama Hatası: {errorMessage}", this);
         }
     }
 
@@ -526,24 +718,6 @@ public class NPCInteractionPrompt : MonoBehaviour
         {
             ollamaService = FindFirstObjectByType<OllamaService>(FindObjectsInactive.Include);
         }
-    }
-
-    /// <summary>
-    /// Sahnedeki Canvas bileşenlerini tarayarak WorldSpace olmayan (ScreenSpaceOverlay veya ScreenSpaceCamera)
-    /// 2D ekran Canvas'ını bulur. Asla WorldSpace modundaki BubbleCanvas'ı döndürmez.
-    /// </summary>
-    private Canvas GetScreenCanvas()
-    {
-        Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        foreach (Canvas c in canvases)
-        {
-            if (c != null && c.renderMode != RenderMode.WorldSpace)
-            {
-                return c;
-            }
-        }
-
-        return null;
     }
 
     private void InitializeReferences()
@@ -642,47 +816,7 @@ public class NPCInteractionPrompt : MonoBehaviour
             playerInputs = playerTransform.GetComponent<StarterAssets.StarterAssetsInputs>();
         }
 
-        // 3. UI Kontrolü (Yalnızca Screen Space Canvas kullanılır)
-        if (promptTextUI == null)
-        {
-            // Yalnızca ekran Canvas'ı (Screen Space) altındaki InteractionPrompt nesnesini ara
-            Canvas screenCanvas = GetScreenCanvas();
-            if (screenCanvas != null)
-            {
-                Transform promptTr = screenCanvas.transform.Find("InteractionPrompt");
-                if (promptTr != null)
-                {
-                    promptTextUI = promptTr.GetComponent<TextMeshProUGUI>();
-                }
-            }
-
-            // Sahnede genel olarak ara; ancak bulunan nesnenin WorldSpace Canvas altında OLMADIĞINDAN emin ol!
-            if (promptTextUI == null)
-            {
-                GameObject promptObj = GameObject.Find("InteractionPrompt");
-                if (promptObj != null)
-                {
-                    Canvas parentCanvas = promptObj.GetComponentInParent<Canvas>();
-                    if (parentCanvas != null && parentCanvas.renderMode != RenderMode.WorldSpace)
-                    {
-                        promptTextUI = promptObj.GetComponent<TextMeshProUGUI>();
-                    }
-                }
-            }
-
-            // Yoksa doğrudan ekran Canvas'ı altında oluştur
-            if (promptTextUI == null)
-            {
-                promptTextUI = CreatePromptUI();
-            }
-        }
-
-        if (promptTextUI != null)
-        {
-            promptTextUI.text = promptMessage;
-        }
-
-        // 4. AI & Konuşma Balonu Referansları
+        // AI & konuşma balonu referansları
         ResolveOllamaService();
         ResolveBubblePresenter();
         GetCurrentInteractionTarget();
@@ -709,58 +843,10 @@ public class NPCInteractionPrompt : MonoBehaviour
 
     private void SetPromptVisible(bool visible)
     {
-        if (promptTextUI != null && promptTextUI.gameObject != null)
+        if (dialogueView != null)
         {
-            if (promptTextUI.gameObject.activeSelf != visible)
-            {
-                promptTextUI.gameObject.SetActive(visible);
-            }
+            dialogueView.SetInteractionPromptVisible(visible);
         }
-    }
-
-    /// <summary>
-    /// Yalnızca Screen Space (ekran) Canvas hiyerarşisi altında dinamik olarak
-    /// 2D "E - Konuş" etkileşim prompt'u oluşturur. Asla WorldSpace altına eklemez.
-    /// </summary>
-    private TextMeshProUGUI CreatePromptUI()
-    {
-        Canvas canvas = GetScreenCanvas();
-
-        if (canvas == null)
-        {
-            Debug.LogWarning("[NPCInteractionPrompt] Sahnede Screen Space Canvas bulunamadı! 'DialogueCanvas' (ScreenSpaceOverlay) oluşturuluyor.", this);
-            GameObject canvasObject = new GameObject("DialogueCanvas");
-            canvas = canvasObject.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasObject.AddComponent<UnityEngine.UI.CanvasScaler>();
-            canvasObject.AddComponent<UnityEngine.UI.GraphicRaycaster>();
-        }
-
-        Transform existing = canvas.transform.Find("InteractionPrompt");
-        if (existing != null)
-        {
-            return existing.GetComponent<TextMeshProUGUI>();
-        }
-
-        GameObject promptObject = new GameObject("InteractionPrompt");
-        promptObject.transform.SetParent(canvas.transform, false);
-
-        RectTransform rect = promptObject.AddComponent<RectTransform>();
-        // Ekranın alt orta kısmına konumlandır
-        rect.anchorMin = new Vector2(0.5f, 0.20f);
-        rect.anchorMax = new Vector2(0.5f, 0.20f);
-        rect.pivot = new Vector2(0.5f, 0.5f);
-        rect.sizeDelta = new Vector2(300, 50);
-
-        TextMeshProUGUI text = promptObject.AddComponent<TextMeshProUGUI>();
-        text.text = promptMessage;
-        text.fontSize = 28;
-        text.color = Color.white;
-        text.alignment = TextAlignmentOptions.Center;
-        text.enableWordWrapping = false;
-
-        promptObject.SetActive(false);
-        return text;
     }
 
     private void OnDrawGizmosSelected()

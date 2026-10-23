@@ -9,6 +9,7 @@ public class OllamaRequest
     public string model;
     public string prompt;
     public string system;
+    public string format = "json";
     public bool stream;
 
     public OllamaRequest()
@@ -21,7 +22,7 @@ public class OllamaRequest
         this.model = model;
         this.prompt = prompt;
         this.system = system;
+        this.format = "json";
         this.stream = stream;
     }
 }
-

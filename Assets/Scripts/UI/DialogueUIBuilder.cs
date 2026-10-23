@@ -55,14 +55,15 @@ public class DialogueUIBuilder : MonoBehaviour
 
         string[] messages =
         {
-            "Yardım Et",
+            "Yardım et",
             "Umursama",
-            "Hakaret Et"
+            "İkna et",
+            "Egosunu zedele"
         };
 
         for (int i = 0; i < messages.Length; i++)
         {
-            float top = 0.58f - i * 0.18f;
+            float top = 0.77f - i * 0.125f;
 
             GameObject buttonObject = new GameObject(
                 "DialogueButton" + (i + 1));
@@ -72,7 +73,7 @@ public class DialogueUIBuilder : MonoBehaviour
             RectTransform buttonRect =
                 buttonObject.AddComponent<RectTransform>();
 
-            buttonRect.anchorMin = new Vector2(0.05f, top - 0.12f);
+            buttonRect.anchorMin = new Vector2(0.05f, top - 0.105f);
             buttonRect.anchorMax = new Vector2(0.95f, top);
             buttonRect.offsetMin = Vector2.zero;
             buttonRect.offsetMax = Vector2.zero;
