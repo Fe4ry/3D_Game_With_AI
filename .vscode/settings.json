@@ -56,5 +56,6 @@
         "temp/": true,
         "Temp/": true
     },
-    "dotnet.defaultSolution": "3D_Game_With_AI.sln"
+    "dotnet.defaultSolution": "3D_Game_With_AI.sln",
+    "dotnet.preferCSharpExtension": true
 }
