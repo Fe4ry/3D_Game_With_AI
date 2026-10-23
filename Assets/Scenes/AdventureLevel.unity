@@ -6307,21 +6307,9 @@ MonoBehaviour:
   promptMessage: "E - Konu\u015F"
   ollamaService: {fileID: 946022689}
   bubblePresenter: {fileID: 351921394}
-  interactionPrompt: "Kendini sabit kişiliğine ve geçmişine uygun, kısa ve doğal biçimde tanıt."
---- !u!114 &946022692
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 946022686}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a4c72f987bcb412a905a7123f1c84d32, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  randomizeOnAwake: 1
-  personality: 0
+  dialogueView: {fileID: 0}
+  interactionPrompt: "Kendini sabit ki\u015Fili\u011Fine ve ge\xE7mi\u015Fine uygun,
+    k\u0131sa ve do\u011Fal bi\xE7imde tan\u0131t."
 --- !u!114 &946022689
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -6376,6 +6364,21 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   player: {fileID: 232090356}
   updateInterval: 0.2
+  followStoppingDistance: 1.4
+--- !u!114 &946022692
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 946022686}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a4c72f987bcb412a905a7123f1c84d32, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  randomizeOnAwake: 1
+  personality: 0
 --- !u!1 &951473805
 GameObject:
   m_ObjectHideFlags: 0
