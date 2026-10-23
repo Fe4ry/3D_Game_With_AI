@@ -7,6 +7,9 @@ public class NPCController : MonoBehaviour
     [Header("Ollama")]
     [SerializeField] private OllamaService ollamaService;
 
+    [Header("Diyalog")]
+    [SerializeField] private DialogueUI dialogueUI;
+
     [Header("NPC Kişiliği")]
     [TextArea(3, 6)]
     [SerializeField] private string personality =
@@ -21,35 +24,35 @@ public class NPCController : MonoBehaviour
 
         if (ollamaService == null)
         {
-            Debug.LogError("OllamaService Inspector'da atanmamış!", this);
+            ShowError("OllamaService Inspector'da atanmamış!");
             return;
         }
 
         StartCoroutine(SendPlayerMessage(playerMessage));
     }
 
+    public void AskForHelp()
+    {
+        Talk("Bana yardım et. Benimle gelmeni istiyorum.");
+    }
 
-public void AskForHelp()
-{
-    Talk("Bana yardım et. Benimle gelmeni istiyorum.");
-}
+    public void SayHello()
+    {
+        Talk("Merhaba. Seninle konuşmak istiyorum.");
+    }
 
-public void SayHello()
-{
-    Talk("Merhaba. Seninle konuşmak istiyorum.");
-}
-
-
-
-public void StartConversation()
-{
-    Talk("Merhaba. Seninle konuşmak istiyorum.");
-}
-
+    public void StartConversation()
+    {
+        Talk("Merhaba. Seninle konuşmak istiyorum.");
+    }
 
     private IEnumerator SendPlayerMessage(string playerMessage)
     {
         isWaitingForResponse = true;
+
+        // İstek gönderilmeden önce konuşma balonunu göster.
+        if (dialogueUI != null)
+            dialogueUI.ShowThinking();
 
         string prompt =
             personality +
@@ -66,19 +69,30 @@ public void StartConversation()
             prompt,
             decision =>
             {
+                if (dialogueUI != null)
+                    dialogueUI.ShowDialogue(decision.dialogue);
+
                 Debug.Log(
-                    $"NPC: {decision.dialogue} | " +
-                    $"Karar: {decision.action} | " +
-                    $"İkna: {decision.persuaded}",
+                    $"NPC: {decision.dialogue} | Karar: {decision.action} | İkna: {decision.persuaded}",
                     this
                 );
             },
             error =>
             {
                 Debug.LogError(error, this);
+                ShowError("Ollama hatası:\n" + error);
             }
         );
 
+        // İstek tamamlandı; artık tekrar konuşulabilir.
         isWaitingForResponse = false;
+    }
+
+    private void ShowError(string message)
+    {
+        Debug.LogError(message, this);
+
+        if (dialogueUI != null)
+            dialogueUI.ShowError(message);
     }
 }
