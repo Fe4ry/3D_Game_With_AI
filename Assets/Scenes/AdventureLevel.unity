@@ -4944,7 +4944,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   player: {fileID: 704027875}
   prisoner: {fileID: 1698469371}
-  winPanel: {fileID: 0}
+  winPanel: {fileID: 730294994}
 --- !u!65 &589691789
 BoxCollider:
   m_ObjectHideFlags: 0
@@ -5107,7 +5107,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 1.5}
+  m_AnchoredPosition: {x: 0, y: 2.909}
   m_SizeDelta: {x: 100, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &600486817
@@ -8574,7 +8574,7 @@ Transform:
   m_GameObject: {fileID: 924447367}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -18.835585, y: 0.43498516, z: -4.34163}
+  m_LocalPosition: {x: -18.835585, y: 0.422, z: -4.34163}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -11932,7 +11932,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "TEBR\u0130KLER KAZANDIN!"
+  m_text: "Tebrikler Kazand\u0131n!"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -11941,8 +11941,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4294967295
-  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
+    rgba: 4281332558
+  m_fontColor: {r: 0.30644143, g: 0.9547169, b: 0.18553928, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -11965,9 +11965,9 @@ MonoBehaviour:
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
   m_fontSizeMax: 72
-  m_fontStyle: 0
-  m_HorizontalAlignment: 1
-  m_VerticalAlignment: 256
+  m_fontStyle: 3
+  m_HorizontalAlignment: 2
+  m_VerticalAlignment: 512
   m_textAlignment: 65535
   m_characterSpacing: 0
   m_wordSpacing: 0
@@ -15938,7 +15938,7 @@ Transform:
   m_GameObject: {fileID: 1698469367}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 1, z: 0, w: 0}
-  m_LocalPosition: {x: -20.054, y: -0.29, z: -1.103}
+  m_LocalPosition: {x: -20.054, y: -0.31, z: -2.4}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -15970,7 +15970,8 @@ MonoBehaviour:
   quoteText: {fileID: 223255029}
   resultText: {fileID: 698448957}
   replayButton: {fileID: 365029848}
-  personalityType: 2
+  npcFollowPlayer: {fileID: 1698469371}
+  personalityType: 0
 --- !u!114 &1698469370
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -16000,7 +16001,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9c001d69336c5834a8e2f7080a242b40, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  player: {fileID: 704027875}
+  player: {fileID: 232090356}
   updateInterval: 0.2
   stoppingDistance: 1.8
   animator: {fileID: 0}
@@ -16543,7 +16544,7 @@ Transform:
   m_GameObject: {fileID: 1866148688}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0.011, y: 0.95, z: -0.009}
+  m_LocalPosition: {x: 0.011, y: 0.692, z: -0.009}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:

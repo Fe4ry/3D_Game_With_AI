@@ -56,6 +56,9 @@ public class NPCController : MonoBehaviour
     private const string FallbackQuote =
         "İnsan, başkasını küçülterek kendini yüceltemez.";
 
+    private const string OllamaFailureMessage =
+        "Bu mahkûm konuşmayı bilmiyor.";
+
     private int remainingAttempts = MaxAttempts;
     private bool isWaitingForResponse;
     private bool isPersuaded;
@@ -98,7 +101,6 @@ public class NPCController : MonoBehaviour
 
     private void Start()
     {
-        // Mahkûm oyun başında otomatik takip etmez.
         if (npcFollowPlayer != null)
             npcFollowPlayer.SetFollowing(false);
     }
@@ -128,34 +130,34 @@ public class NPCController : MonoBehaviour
             case PersonalityType.Sevecen:
                 currentOptions = new[]
                 {
-                    "Seni burada bırakmak istemiyorum. Gel, birlikte çıkalım.",
-                    "Yardımına ihtiyacın olduğunu görüyorum. Yanında olmak istiyorum.",
-                    "Bana hemen güvenmek zorunda değilsin. Sana içtenlikle yardım etmek istiyorum."
+                    "Seni burada bırakmak istemiyorum",
+                    "Yardımıma ihtiyacın olduğunu görüyorum",
+                    "Sana içtenlikle yardım etmek istiyorum."
                 };
                 break;
 
             case PersonalityType.Korkak:
                 currentOptions = new[]
                 {
-                    "Korktuğunu anlayabiliyorum. Elimden geldiğince seni koruyacağım.",
-                    "Bunu tek başına yaşamak zorunda değilsin. İstersen yanında kalırım.",
-                    "Acele etmeyelim. Birlikte daha güvenli bir yere gidebiliriz."
+                    "Elimden geldiğince seni koruyacağım.",
+                    "Bunu tek başına yaşamak zorunda değilsin",
+                    "Birlikte daha güvenli bir yere gidebiliriz."
                 };
                 break;
 
             case PersonalityType.Egoist:
                 currentOptions = new[]
                 {
-                    "Senin de kurtulmayı hak ettiğini düşünüyorum. Sana yardım etmek istiyorum.",
-                    "Seni kullanmaya çalışmıyorum. İkimizin de kurtulmasını istiyorum.",
-                    "Yeteneklerine güveniyorum. Birbirimize destek olup buradan çıkabiliriz."
+                    "Sana özgürlük ve huzur sunuyorum.",
+                    "İkimizin de kurtulmasını istiyorum.",
+                    "Birbirimize destek olup buradan çıkabiliriz."
                 };
                 break;
 
             case PersonalityType.Saldirgan:
                 currentOptions = new[]
                 {
-                    "Burada çok şey yaşamış olmalısın. Seni yargılamıyorum, yardım etmek istiyorum.",
+                    "Seni yargılamıyorum, yardım etmek istiyorum.",
                     "Sana ne yapacağını söylemeyeceğim. Kararına saygı duyuyorum.",
                     "Bana hemen güvenmeni beklemiyorum. Yine de seni burada bırakmak istemiyorum."
                 };
@@ -172,7 +174,8 @@ public class NPCController : MonoBehaviour
     {
         if (button == null)
         {
-            Debug.LogError("Diyalog butonu Inspector'da atanmamış!", this);
+            Debug.LogError(
+                "Diyalog butonu Inspector'da atanmamış!", this);
             return;
         }
 
@@ -193,7 +196,8 @@ public class NPCController : MonoBehaviour
 
         if (ollamaService == null)
         {
-            ShowError("OllamaService Inspector'da atanmamış!");
+            HandleOllamaError(
+                "OllamaService Inspector'da atanmamış!");
             return;
         }
 
@@ -259,10 +263,8 @@ public class NPCController : MonoBehaviour
     {
         if (ollamaService == null)
         {
-            if (countsAsAttempt)
-                remainingAttempts++;
-
-            ShowError("OllamaService Inspector'da atanmamış!");
+            HandleOllamaError(
+                "OllamaService Inspector'da atanmamış!");
             yield break;
         }
 
@@ -277,36 +279,42 @@ public class NPCController : MonoBehaviour
         if (countsAsAttempt)
         {
             prompt =
-                "Sen bir hikâye oyunundaki mahkûm NPC'sin.\n" +
+                "You are a prisoner NPC in a story-driven game.\n" +
                 GetPersonalityDescription() +
-                "\nOyuncunun sana söylediği söz: \"" +
+                "\nThe player's chosen message is: \"" +
                 playerMessage + "\"\n\n" +
-                "Oyuncu sana içtenlikle yardım etmek ve seni buradan " +
-                "çıkarmak istiyor. Söylediklerini bu bağlamda değerlendir.\n\n" +
-                "Samimi ve kişiliğine uygun bir yardım teklifi genellikle " +
-                "kabul etmek için yeterlidir. Sürekli şüphe üretme, " +
-                "yeni şartlar koyma veya kanıt isteme. Her karakter ikna " +
-                "olabilir ama kararını kendin ver.\n\n" +
-                "İkna olduysan persuaded=true ve action=FOLLOW döndür. " +
-                "İkna olmadıysan persuaded=false ve action=STAY döndür. " +
-                "Kısa, doğal ve kişiliğine uygun Türkçe cevap ver. " +
-                "Kabul ediyorsan oyuncuyla geleceğini açıkça söyle.\n\n" +
-                "Yalnızca JSON döndür:\n" +
-                "{\"action\":\"FOLLOW\",\"dialogue\":\"Seninle geliyorum.\"," +
-                "\"persuaded\":true}";
+                "Evaluate the offer based on your personality and the meaning " +
+                "of the player's words. Persuasion should be moderately easy. " +
+                "A sincere and reasonable offer of help will often be convincing. " +
+                "Do not demand proof or invent unnecessary conditions, but do " +
+                "not automatically accept every option.\n\n" +
+                "Personality guidelines:\n" +
+                "- Sevecen: Trusts sincere people relatively easily.\n" +
+                "- Korkak: Values safety and responds well to reassurance.\n" +
+                "- Egoist: Considers personal benefit and the chance to escape.\n" +
+                "- Saldirgan: Is cautious but can accept respectful, sincere help.\n\n" +
+                "If persuaded, return persuaded=true and action=FOLLOW. " +
+                "Otherwise, return persuaded=false and action=STAY. " +
+                "All dialogue shown to the player MUST be natural Turkish, " +
+                "never English. Keep it short and consistent with your personality. " +
+                "If persuaded, clearly agree to leave with the player. " +
+                "If not persuaded, briefly explain your hesitation.\n\n" +
+                "Return ONLY valid JSON in this format:\n" +
+                "{\"action\":\"STAY\",\"dialogue\":\"Henüz karar vermedim.\"," +
+                "\"persuaded\":false}";
         }
         else
         {
             prompt =
-                "Sen bir hikâye oyunundaki mahkûm NPC'sin.\n" +
+                "You are a prisoner NPC in a story-driven game.\n" +
                 GetPersonalityDescription() +
-                "\nOyuncu seninle konuşuyor: \"" +
-                playerMessage + "\"\n\n" +
-                "Kişiliğine uygun, doğal ve kısa bir Türkçe cevap ver. " +
-                "Oyuncu henüz ikna denemesi yapmadı. Şimdilik ikna olma " +
-                "veya takip etme kararı verme. persuaded=false ve " +
-                "action=STAY döndür. Oyuncuyla konuşmaya açık ol.\n" +
-                "Yalnızca JSON döndür:\n" +
+                "\nThe player says: \"" + playerMessage + "\"\n\n" +
+                "Respond naturally according to your personality. This is only " +
+                "an opening conversation; no persuasion attempt has been made. " +
+                "Do not agree to follow the player. Return persuaded=false and " +
+                "action=STAY.\n\n" +
+                "The dialogue MUST be short, natural Turkish, never English.\n" +
+                "Return ONLY valid JSON:\n" +
                 "{\"action\":\"STAY\",\"dialogue\":\"Seni dinliyorum.\"," +
                 "\"persuaded\":false}";
         }
@@ -322,7 +330,6 @@ public class NPCController : MonoBehaviour
 
                     if (isPersuaded)
                     {
-                        // İKNA BAŞARILI: TAKİBİ BAŞLAT.
                         if (npcFollowPlayer != null)
                         {
                             npcFollowPlayer.SetFollowing(true);
@@ -342,23 +349,34 @@ public class NPCController : MonoBehaviour
 
                         SetChoicePanelVisible(false);
                     }
-                    else if (remainingAttempts <= 0)
-                    {
-                        LoseGame();
-                    }
                     else
                     {
-                        string response =
-                            decision.dialogue +
-                            "\n\nKalan deneme hakkı: " + remainingAttempts;
-
                         if (dialogueUI != null)
-                            dialogueUI.ShowDialogue(response);
+                            dialogueUI.ShowDialogue(decision.dialogue);
 
                         if (choiceNPCMessageText != null)
-                            choiceNPCMessageText.text = response;
+                            choiceNPCMessageText.text = decision.dialogue;
 
-                        SetChoicePanelVisible(true);
+                        if (remainingAttempts <= 0)
+                        {
+                            isGameOver = true;
+                            SetButtonsInteractable(false);
+                            SetChoicePanelVisible(false);
+                            StartCoroutine(
+                                ShowFinalFailureAfterDelay(2f));
+                        }
+                        else
+                        {
+                            string response =
+                                decision.dialogue +
+                                "\n\nKalan deneme hakkı: " +
+                                remainingAttempts;
+
+                            if (choiceNPCMessageText != null)
+                                choiceNPCMessageText.text = response;
+
+                            SetChoicePanelVisible(true);
+                        }
                     }
                 }
                 else
@@ -382,17 +400,44 @@ public class NPCController : MonoBehaviour
             },
             error =>
             {
+                // Başarısız istek, ikna denemesi sayılmaz.
                 if (countsAsAttempt)
                     remainingAttempts++;
 
-                ShowError("Ollama hatası:\n" + error);
-                SetChoicePanelVisible(true);
+                HandleOllamaError(error);
             });
+
+        // Hata callback'i de dahil olmak üzere coroutine tamamlanıyor.
+        if (!isGameOver && !isPersuaded)
+            SetButtonsInteractable(true);
+    }
+
+    private void HandleOllamaError(string error)
+    {
+        // Teknik hata oyuncuya gösterilmez; yalnızca Console'a yazılır.
+        Debug.LogError(
+            "Ollama isteği başarısız:\n" + error, this);
 
         isWaitingForResponse = false;
 
-        if (!isGameOver && !isPersuaded)
-            SetButtonsInteractable(true);
+        // Önceki düşünme metnini temizleyip sabit mesajı göster.
+        if (dialogueUI != null)
+        {
+            dialogueUI.ShowDialogue(OllamaFailureMessage);
+        }
+
+        if (choiceNPCMessageText != null)
+            choiceNPCMessageText.text = OllamaFailureMessage;
+
+        // Hata sonrasında seçim paneli açılmaz.
+        SetChoicePanelVisible(false);
+        SetButtonsInteractable(false);
+    }
+
+    private IEnumerator ShowFinalFailureAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        ShowLoseScreen("", false);
     }
 
     private void OnFinalInsultSelected()
@@ -411,10 +456,11 @@ public class NPCController : MonoBehaviour
         }
 
         string quotePrompt =
-            "Türkçe, kısa, etkileyici ve düşündürücü tek bir özlü söz üret. " +
-            "Konu: hakaret etmek, kibir ve insanları küçümsemenin sonucu. " +
-            "NPC kişiliği: " + GetPersonalityDescription() +
-            "\nYalnızca bu JSON biçiminde yanıt ver:\n" +
+            "Generate one short, thoughtful and impactful quote in Turkish. " +
+            "Topic: insulting others, arrogance, and the consequences of " +
+            "belittling people. NPC personality: " +
+            GetPersonalityDescription() +
+            "\nThe quote MUST be in Turkish. Return ONLY this JSON format:\n" +
             "{\"quote\":\"özlü söz\"}";
 
         StartCoroutine(ollamaService.GetQuote(
@@ -425,7 +471,9 @@ public class NPCController : MonoBehaviour
             },
             error =>
             {
-                Debug.LogWarning("Özlü söz üretilemedi: " + error, this);
+                Debug.LogWarning(
+                    "Özlü söz üretilemedi: " + error, this);
+
                 ShowLoseScreen(FallbackQuote, true);
             }));
     }
@@ -491,30 +539,26 @@ public class NPCController : MonoBehaviour
         switch (personalityType)
         {
             case PersonalityType.Sevecen:
-                return "Sevecen, sıcak ve empatik bir mahkûmsun. " +
-                       "İnsanların samimiyetine değer verirsin. " +
-                       "İçten bir yardım teklifini kabul etmeye açıksın.";
+                return "You are a kind, warm, and empathetic prisoner. " +
+                       "You value sincerity and are relatively open to genuine help.";
 
             case PersonalityType.Korkak:
-                return "Korkmuş ve tedirgin bir mahkûmsun. " +
-                       "Güvenlik senin için önemlidir. Birinin sana " +
-                       "destek olacağını içtenlikle söylemesi seni rahatlatır " +
-                       "ve yardım teklifini kabul etmene yardımcı olabilir.";
+                return "You are a frightened and anxious prisoner. " +
+                       "Safety matters to you. Reassurance and a believable " +
+                       "offer of protection can help you trust someone.";
 
             case PersonalityType.Egoist:
-                return "Kendi çıkarını önemseyen bir mahkûmsun. " +
-                       "Kendi kurtuluşun için makul bir fırsat gördüğünde " +
-                       "iş birliği yapabilirsin. Her teklifte büyük bir kazanç " +
-                       "veya garanti aramazsın.";
+                return "You are a self-interested prisoner. " +
+                       "You consider your chance of escaping and can cooperate " +
+                       "when the offer seems beneficial.";
 
             case PersonalityType.Saldirgan:
-                return "Öfkeli, sert ve insanlara karşı temkinli bir " +
-                       "mahkûmsun. Ancak anlaşılmak ve saygı görmek senin " +
-                       "için önemlidir. Seni yargılamadan, kibarca ve içtenlikle " +
-                       "yardım etmek isteyen birine güvenmeye başlayabilirsin.";
+                return "You are an angry, tough, and cautious prisoner. " +
+                       "You do not trust people easily, but respectful and " +
+                       "sincere help can convince you.";
 
             default:
-                return "Geçmişine ve kişiliğine uygun davranan bir mahkûmsun.";
+                return "You are a prisoner who acts according to your personality and background.";
         }
     }
 
