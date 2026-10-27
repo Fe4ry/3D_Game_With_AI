@@ -38,6 +38,9 @@ public class NPCController : MonoBehaviour
     [SerializeField] private TMPro.TMP_Text resultText;
     [SerializeField] private Button replayButton;
 
+    [Header("NPC Takip")]
+    [SerializeField] private NPCFollowPlayer npcFollowPlayer;
+
     [Header("NPC Kişiliği")]
     [SerializeField] private PersonalityType personalityType =
         PersonalityType.Sevecen;
@@ -91,6 +94,13 @@ public class NPCController : MonoBehaviour
 
         if (replayButton != null)
             replayButton.onClick.AddListener(ReplayGame);
+    }
+
+    private void Start()
+    {
+        // Mahkûm oyun başında otomatik takip etmez.
+        if (npcFollowPlayer != null)
+            npcFollowPlayer.SetFollowing(false);
     }
 
     private void OnDestroy()
@@ -312,6 +322,18 @@ public class NPCController : MonoBehaviour
 
                     if (isPersuaded)
                     {
+                        // İKNA BAŞARILI: TAKİBİ BAŞLAT.
+                        if (npcFollowPlayer != null)
+                        {
+                            npcFollowPlayer.SetFollowing(true);
+                        }
+                        else
+                        {
+                            Debug.LogError(
+                                "NPCFollowPlayer Inspector'da atanmamış!",
+                                this);
+                        }
+
                         if (dialogueUI != null)
                             dialogueUI.ShowDialogue(decision.dialogue);
 
