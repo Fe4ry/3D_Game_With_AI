@@ -1,4 +1,3 @@
-
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
@@ -53,11 +52,21 @@ public class NPCController : MonoBehaviour
     private const string PersuasionLoseMessage =
         "İKNA EDEMEDİNİZ...";
 
-    private const string FallbackQuote =
-        "İnsan, başkasını küçülterek kendini yüceltemez.";
-
+private static readonly string[] MoralQuotes =
+{
+    "İnsanın gerçek karakteri, kendisinden güçsüz olanlara nasıl davrandığında ortaya çıkar.",
+    "Başkalarını değersizleştirerek kendini değerli kılamazsın.",
+    "Gerçek güç, birini incitebilecekken ona merhamet gösterebilmektir.",
+    "İnsanın değeri sözleriyle değil, davranışlarıyla ölçülür.",
+    "Saygı, korku salarak değil, insanlara nasıl davrandığınla kazanılır.",
+    "İnsanlığını kaybettikten sonra kazanılan bir tartışmanın hiçbir anlamı yoktur.",
+    "Gururun unutturmaya çalıştıklarını vicdanın hatırlar.",
+    "Başkalarına nasıl davrandığın, zamanla kim olduğuna dönüşür.",
+    "Zalimlik sana güç veriyor gibi görünür, ama aslında zayıflığını ortaya çıkarır.",
+    "İnsanın en büyük zaferi, zalimleşmeyi öğreten bir dünyada bile insan kalabilmektir."
+};
     private const string OllamaFailureMessage =
-        "Bu mahkûm konuşmayı bilmiyor.";
+        "Bu mahkum konuşmayı bilmiyor.";
 
     private int remainingAttempts = MaxAttempts;
     private bool isWaitingForResponse;
@@ -130,36 +139,36 @@ public class NPCController : MonoBehaviour
             case PersonalityType.Sevecen:
                 currentOptions = new[]
                 {
-                    "Seni burada bırakmak istemiyorum",
-                    "Yardımıma ihtiyacın olduğunu görüyorum",
-                    "Sana içtenlikle yardım etmek istiyorum."
+                    "Gülümsemek de bir sadakadır, karakterine saygı duyuyorum, benimle gelmelisin...",
+                    "Sevecen insanlar neye güveneceğini bilir, bana güven sana yardım etmek istiyorum.",
+                    "Kendine iyilik et ve benimle birlikte gel."
                 };
                 break;
 
             case PersonalityType.Korkak:
                 currentOptions = new[]
                 {
-                    "Elimden geldiğince seni koruyacağım.",
-                    "Bunu tek başına yaşamak zorunda değilsin",
-                    "Birlikte daha güvenli bir yere gidebiliriz."
+                    "İnsan zihninden kaçtığı şeylerden korkar, zihninden kaçmazsan korkunu yenebilirsin...",
+                    "Sana güveniyorum, el ele verirsek güçlenebiliriz.",
+                    "İnsanların yardım isteklerini kabul etmek de o insana bir yardımdır..."
                 };
                 break;
 
             case PersonalityType.Egoist:
                 currentOptions = new[]
                 {
-                    "Sana özgürlük ve huzur sunuyorum.",
-                    "İkimizin de kurtulmasını istiyorum.",
-                    "Birbirimize destek olup buradan çıkabiliriz."
+                    "Küçük şeyler BÜYÜK detaylarda saklıdır, bazen küçük olmak bir inceliktir.",
+                    "Kurtulmak istersen eğer sana gerçek dünyayı tanıtabilirim.",
+                    "Egoyu bir kenara bırakabilmek BÜYÜKLÜKTÜR. Sana yardım edebilirim..."
                 };
                 break;
 
             case PersonalityType.Saldirgan:
                 currentOptions = new[]
                 {
-                    "Seni yargılamıyorum, yardım etmek istiyorum.",
-                    "Sana ne yapacağını söylemeyeceğim. Kararına saygı duyuyorum.",
-                    "Bana hemen güvenmeni beklemiyorum. Yine de seni burada bırakmak istemiyorum."
+                    "Buranın yerlisiyim, seni gördüm belki açsındır, yemek ister misin?",
+                    "Yardım etmeye çalisiyorum, sana zarar veremem çünkü yaşlıyım.",
+                    "Çıkarcı biri olsaydım sana boş yere yemek vermek istemezdim... Ne işime yarardın ki?"
                 };
                 break;
         }
@@ -216,7 +225,7 @@ public class NPCController : MonoBehaviour
 
     public void StartConversation()
     {
-        if (isGameOver || isPersuaded)
+        if (isGameOver || isPersuaded || isWaitingForResponse)
             return;
 
         SayHello();
@@ -256,7 +265,16 @@ public class NPCController : MonoBehaviour
         StartCoroutine(SendPlayerMessage(
             currentOptions[optionIndex], true));
     }
+private void OnApplicationFocus(bool hasFocus)
+{
+    if (!hasFocus)
+        return;
 
+    // Unity Game penceresine geri dönüldüğünde
+    // imleç tekrar görünür ve serbest olsun.
+    Cursor.lockState = CursorLockMode.None;
+    Cursor.visible = true;
+}
     private IEnumerator SendPlayerMessage(
         string playerMessage,
         bool countsAsAttempt)
@@ -292,7 +310,7 @@ public class NPCController : MonoBehaviour
                 "- Sevecen: Trusts sincere people relatively easily.\n" +
                 "- Korkak: Values safety and responds well to reassurance.\n" +
                 "- Egoist: Considers personal benefit and the chance to escape.\n" +
-                "- Saldirgan: Is cautious but can accept respectful, sincere help.\n\n" +
+                "- Saldirgan: Is cautious but can accept respectful, sincere help.If he approaches with sincerity, he may become more polite and might accept.\n\n" +
                 "If persuaded, return persuaded=true and action=FOLLOW. " +
                 "Otherwise, return persuaded=false and action=STAY. " +
                 "All dialogue shown to the player MUST be natural Turkish, " +
@@ -318,6 +336,8 @@ public class NPCController : MonoBehaviour
                 "{\"action\":\"STAY\",\"dialogue\":\"Seni dinliyorum.\"," +
                 "\"persuaded\":false}";
         }
+
+        bool requestFailed = false;
 
         yield return ollamaService.GetDecision(
             prompt,
@@ -362,6 +382,7 @@ public class NPCController : MonoBehaviour
                             isGameOver = true;
                             SetButtonsInteractable(false);
                             SetChoicePanelVisible(false);
+
                             StartCoroutine(
                                 ShowFinalFailureAfterDelay(2f));
                         }
@@ -400,36 +421,38 @@ public class NPCController : MonoBehaviour
             },
             error =>
             {
-                // Başarısız istek, ikna denemesi sayılmaz.
+                requestFailed = true;
+
+                // Başarısız istek ikna denemesi sayılmaz.
                 if (countsAsAttempt)
                     remainingAttempts++;
 
                 HandleOllamaError(error);
             });
 
-        // Hata callback'i de dahil olmak üzere coroutine tamamlanıyor.
-        if (!isGameOver && !isPersuaded)
+        // Hem başarı hem hata durumunda bekleme durumu sonlandırılır.
+        isWaitingForResponse = false;
+
+        // Hata sonrasında butonları etkinleştirme.
+        // Başarılı yanıt geldiyse normal akış devam eder.
+        if (!requestFailed && !isGameOver && !isPersuaded)
             SetButtonsInteractable(true);
     }
 
     private void HandleOllamaError(string error)
     {
-        // Teknik hata oyuncuya gösterilmez; yalnızca Console'a yazılır.
+        // Teknik ayrıntı Console'a yazılır, balonda gösterilmez.
         Debug.LogError(
             "Ollama isteği başarısız:\n" + error, this);
 
         isWaitingForResponse = false;
 
-        // Önceki düşünme metnini temizleyip sabit mesajı göster.
         if (dialogueUI != null)
-        {
             dialogueUI.ShowDialogue(OllamaFailureMessage);
-        }
 
         if (choiceNPCMessageText != null)
             choiceNPCMessageText.text = OllamaFailureMessage;
 
-        // Hata sonrasında seçim paneli açılmaz.
         SetChoicePanelVisible(false);
         SetButtonsInteractable(false);
     }
@@ -440,44 +463,22 @@ public class NPCController : MonoBehaviour
         ShowLoseScreen("", false);
     }
 
-    private void OnFinalInsultSelected()
-    {
-        if (isWaitingForResponse || isGameOver || isPersuaded)
-            return;
+   private void OnFinalInsultSelected()
+{
+    if (isWaitingForResponse || isGameOver || isPersuaded)
+        return;
 
-        isGameOver = true;
-        SetButtonsInteractable(false);
-        SetChoicePanelVisible(false);
+    isGameOver = true;
+    SetButtonsInteractable(false);
+    SetChoicePanelVisible(false);
 
-        if (ollamaService == null)
-        {
-            ShowLoseScreen(FallbackQuote, true);
-            return;
-        }
+    // Ahlak sözlerinden rastgele birini seç.
+    int randomIndex = Random.Range(0, MoralQuotes.Length);
+    string randomQuote = MoralQuotes[randomIndex];
 
-        string quotePrompt =
-            "Generate one short, thoughtful and impactful quote in Turkish. " +
-            "Topic: insulting others, arrogance, and the consequences of " +
-            "belittling people. NPC personality: " +
-            GetPersonalityDescription() +
-            "\nThe quote MUST be in Turkish. Return ONLY this JSON format:\n" +
-            "{\"quote\":\"özlü söz\"}";
-
-        StartCoroutine(ollamaService.GetQuote(
-            quotePrompt,
-            quote =>
-            {
-                ShowLoseScreen(quote, true);
-            },
-            error =>
-            {
-                Debug.LogWarning(
-                    "Özlü söz üretilemedi: " + error, this);
-
-                ShowLoseScreen(FallbackQuote, true);
-            }));
-    }
-
+    // Kaybetme ekranında üst mesaj olarak göster.
+    ShowLoseScreen(randomQuote, true);
+}
     private void ShowLoseScreen(string quote, bool insultLoss)
     {
         if (gameOverPanel == null)
@@ -578,15 +579,24 @@ public class NPCController : MonoBehaviour
     }
 
     private void SetChoicePanelVisible(bool visible)
-    {
-        if (dialogueChoicePanel != null)
-            dialogueChoicePanel.SetActive(visible);
+{
+    if (dialogueChoicePanel != null)
+        dialogueChoicePanel.SetActive(visible);
 
-        Cursor.visible = visible;
-        Cursor.lockState = visible
-            ? CursorLockMode.None
-            : CursorLockMode.Locked;
+    // Diyalog seçenekleri açıkken fare serbest olsun.
+    if (visible)
+    {
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
+    else
+    {
+        // Oyun penceresi dışına tıklayınca imleci
+        // zorla kilitleme; oyuncu UI ile etkileşebilsin.
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
+    }
+}
 
     private void ShowError(string message)
     {
