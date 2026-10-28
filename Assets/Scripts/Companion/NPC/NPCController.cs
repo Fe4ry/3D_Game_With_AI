@@ -71,6 +71,7 @@ private static readonly string[] MoralQuotes =
     private int remainingAttempts = MaxAttempts;
     private bool isWaitingForResponse;
     private bool isPersuaded;
+    public bool IsPersuaded => isPersuaded;
     private bool isGameOver;
 
     private string[] currentOptions = new string[3];
