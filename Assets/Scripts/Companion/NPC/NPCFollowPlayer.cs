@@ -63,11 +63,19 @@ if (animator != null)
             return;
 
         // NavMeshAgent'ın anlık hızını Blend Tree'deki "Speed" parametresine aktar
-        if (animator != null && animator.isActiveAndEnabled)
-        {
-            float movementSpeed = agent.velocity.magnitude;
 
-        }
+if (animator != null && animator.isActiveAndEnabled)
+{
+    float movementSpeed = agent.velocity.magnitude;
+
+    animator.SetFloat(
+        speedParameter,
+        movementSpeed,
+        animationDampTime,
+        Time.deltaTime
+    );
+}
+
 
         if (!isFollowing || player == null || !agent.isOnNavMesh)
             return;

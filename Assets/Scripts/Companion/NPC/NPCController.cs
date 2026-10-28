@@ -47,7 +47,7 @@ public class NPCController : MonoBehaviour
     private const int MaxAttempts = 3;
 
     private const string InsultLoseMessage =
-        "Oyunu kaybettin, vay ahlak düşmanı vay...";
+        "Oyunu kaybettin, vay ZORBA vay...";
 
     private const string PersuasionLoseMessage =
         "İKNA EDEMEDİNİZ...";
