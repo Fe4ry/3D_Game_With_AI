@@ -158,9 +158,9 @@ private static readonly string[] MoralQuotes =
             case PersonalityType.Egoist:
                 currentOptions = new[]
                 {
-                    "Küçük şeyler BÜYÜK detaylarda saklıdır, bazen küçük olmak bir inceliktir.",
-                    "Kurtulmak istersen eğer sana gerçek dünyayı tanıtabilirim.",
-                    "Egoyu bir kenara bırakabilmek BÜYÜKLÜKTÜR. Sana yardım edebilirim..."
+                    "Küçük şeyler BÜYÜK detaylarda saklıdır, bazen küçük olmak bir inceliktir. Gel birbirimize destek olalım.",
+                    "Refah seviyeni artıracağım, benimle gel, güvenli alana götüreceğim seni.",
+                    "Birbirimize destek olabiliriz, benim de ihtiyacım var, yalnız kalmayı sevmiyorum."
                 };
                 break;
 

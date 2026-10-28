@@ -49,7 +49,10 @@ public class NPCFollowPlayer : MonoBehaviour
    
 private void Start()
 {
-    FindPlayerIfNeeded();
+if (animator != null)
+{
+    animator.SetFloat("MotionSpeed", 1f);
+}    FindPlayerIfNeeded();
     SetFollowing(false);
 }
 
@@ -64,12 +67,6 @@ private void Start()
         {
             float movementSpeed = agent.velocity.magnitude;
 
-            animator.SetFloat(
-                speedParameter,
-                movementSpeed,
-                animationDampTime,
-                Time.deltaTime
-            );
         }
 
         if (!isFollowing || player == null || !agent.isOnNavMesh)
