@@ -27,12 +27,18 @@ public class NPCController : MonoBehaviour
     [Header("Oyuncu Mesajı")]
     [SerializeField] private TMP_InputField playerInputField;
     [SerializeField] private Button submitButton;
-
-    [Header("Oyun Sonu Ekranı")]
+    [Header("Oyuncu Kontrolü")]
+[SerializeField]
+private StarterAssets.ThirdPersonController playerMovementController;   
+ [Header("Oyun Sonu Ekranı")]
     [SerializeField] private GameObject gameOverPanel;
     [SerializeField] private TMP_Text quoteText;
     [SerializeField] private TMP_Text resultText;
     [SerializeField] private Button replayButton;
+
+    [Header("Ollama Bağlantı Hata Ekranı")]
+[SerializeField] private GameObject connectionErrorPanel;
+[SerializeField] private Button retryButton;
 
     [Header("NPC Takip")]
     [SerializeField] private NPCFollowPlayer npcFollowPlayer;
@@ -104,6 +110,15 @@ public class NPCController : MonoBehaviour
         if (playerInputField == null)
             Debug.LogError(
                 "InputField_TMP Inspector'da atanmamış!", this);
+        else{
+            playerInputField.onSelect.AddListener(OnPlayerInputSelected);
+            playerInputField.onDeselect.AddListener(OnPlayerInputDeselected);
+        }
+     if (retryButton != null)
+            retryButton.onClick.AddListener(ReplayGame);
+        if (connectionErrorPanel != null)
+    connectionErrorPanel.SetActive(false);
+
     }
 
     private void Start()
@@ -119,6 +134,15 @@ public class NPCController : MonoBehaviour
 
         if (submitButton != null)
             submitButton.onClick.RemoveListener(OnSubmitPlayerInput);
+
+        if (playerInputField != null)
+        {
+            playerInputField.onSelect.RemoveListener(OnPlayerInputSelected);
+            playerInputField.onDeselect.RemoveListener(OnPlayerInputDeselected);
+        }
+
+        if (retryButton != null)
+    retryButton.onClick.RemoveListener(ReplayGame);
     }
 
     public void Talk(string playerMessage)
@@ -153,7 +177,17 @@ public class NPCController : MonoBehaviour
 
         SayHello();
     }
+private void OnPlayerInputSelected(string text)
+{
+    if (playerMovementController != null)
+        playerMovementController.CanMove = false;
+}
 
+private void OnPlayerInputDeselected(string text)
+{
+    if (playerMovementController != null)
+        playerMovementController.CanMove = true;
+}
     private void OnApplicationFocus(bool hasFocus)
     {
         if (!hasFocus)
@@ -328,6 +362,9 @@ public class NPCController : MonoBehaviour
                 "Return ONLY valid JSON:\n" +
                 "{\"action\":\"STAY\",\"dialogue\":\"Seni dinliyorum.\"," +
                 "\"persuaded\":false,\"insulted\":false}";
+
+
+                
         }
 
         bool requestFailed = false;
@@ -481,36 +518,53 @@ public class NPCController : MonoBehaviour
             });
 
         // Hem başarı hem hata durumunda bekleme durumunu sonlandır.
-        isWaitingForResponse = false;
+// Hem başarı hem hata durumunda bekleme durumunu sonlandır.
+isWaitingForResponse = false;
 
-        if (requestFailed && !isGameOver && !isPersuaded)
-        {
-            SetChoicePanelVisible(true);
-            SetButtonsInteractable(true);
-        }
-        else if (!isGameOver && !isPersuaded)
-        {
-            SetButtonsInteractable(true);
-        }
+// Hata ekranı açıldıysa diyalog ekranını tekrar açma.
+if (requestFailed)
+    yield break;
+
+if (!isGameOver && !isPersuaded)
+{
+    SetButtonsInteractable(true);
+}
     }
 
-    private void HandleOllamaError(string error)
+private void HandleOllamaError(string error)
+{
+    Debug.LogError(
+        "Ollama isteği başarısız:\n" + error, this);
+
+    isWaitingForResponse = false;
+
+    // Diyalog ekranlarını kapat.
+    SetChoicePanelVisible(false);
+
+    if (dialogueUI != null)
+        dialogueUI.ShowDialogue("");
+
+    if (choiceNPCMessageText != null)
+        choiceNPCMessageText.text = "";
+
+    // Oyuncu kontrollerini devre dışı bırak.
+    SetButtonsInteractable(false);
+
+    if (playerMovementController != null)
+        playerMovementController.enabled = false;
+
+    // Bağlantı hata ekranını aç.
+    if (connectionErrorPanel != null)
+    {
+        connectionErrorPanel.SetActive(true);
+    }
+    else
     {
         Debug.LogError(
-            "Ollama isteği başarısız:\n" + error, this);
-
-        isWaitingForResponse = false;
-
-        if (dialogueUI != null)
-            dialogueUI.ShowDialogue(OllamaFailureMessage);
-
-        if (choiceNPCMessageText != null)
-            choiceNPCMessageText.text = OllamaFailureMessage;
-
-        SetChoicePanelVisible(false);
-        SetButtonsInteractable(false);
+            "ConnectionErrorPanel Inspector'da atanmamış!",
+            this);
     }
-
+}
     private IEnumerator ShowFinalFailureAfterDelay(float delay)
     {
         yield return new WaitForSeconds(delay);
