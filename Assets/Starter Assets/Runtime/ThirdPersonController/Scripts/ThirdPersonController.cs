@@ -30,6 +30,8 @@ namespace StarterAssets
 
         public AudioClip LandingAudioClip;
         public AudioClip[] FootstepAudioClips;
+
+        public bool CanMove = true;
         [Range(0, 1)] public float FootstepAudioVolume = 0.5f;
 
         [Space(10)]
@@ -152,14 +154,16 @@ namespace StarterAssets
             _fallTimeoutDelta = FallTimeout;
         }
 
-        private void Update()
-        {
-            _hasAnimator = TryGetComponent(out _animator);
+private void Update()
+{
+    _hasAnimator = TryGetComponent(out _animator);
 
-            JumpAndGravity();
-            GroundedCheck();
-            Move();
-        }
+
+    JumpAndGravity();
+    GroundedCheck();
+    Move();
+    
+}
 
         private void LateUpdate()
         {
@@ -212,7 +216,27 @@ namespace StarterAssets
         }
 
         private void Move()
-        {
+        {if (!CanMove)
+{
+    _input.move = Vector2.zero;
+    _input.sprint = false;
+    _input.jump = false;
+
+    _speed = 0f;
+    _animationBlend = 0f;
+
+    _controller.Move(
+        new Vector3(0f, _verticalVelocity, 0f) * Time.deltaTime
+    );
+
+    if (_hasAnimator)
+    {
+        _animator.SetFloat(_animIDSpeed, 0f);
+        _animator.SetFloat(_animIDMotionSpeed, 0f);
+    }
+
+    return;
+}
             // set target speed based on move speed, sprint speed and if sprint is pressed
             float targetSpeed = _input.sprint ? SprintSpeed : MoveSpeed;
 
@@ -280,7 +304,12 @@ namespace StarterAssets
         }
 
         private void JumpAndGravity()
-        {
+        {    
+            if (!CanMove)
+            {
+                _input.jump = false;
+                return;
+            }
             if (Grounded)
             {
                 // reset the fall timeout timer

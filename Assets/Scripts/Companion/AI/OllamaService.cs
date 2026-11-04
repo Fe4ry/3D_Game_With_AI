@@ -17,6 +17,7 @@ public class OllamaService : MonoBehaviour
         public string action;
         public string dialogue;
         public bool persuaded;
+        public bool insulted;
     }
 
     [Serializable]
@@ -67,7 +68,6 @@ public class OllamaService : MonoBehaviour
 
         string errorJson = JsonUtility.ToJson(info);
 
-        // Teknik ayrıntılar Unity Console'da JSON olarak görünür.
         Debug.LogError(errorJson, this);
 
         return errorJson;
@@ -172,7 +172,8 @@ public class OllamaService : MonoBehaviour
         using (UnityWebRequest request =
                new UnityWebRequest(ollamaUrl, "POST"))
         {
-            byte[] body = System.Text.Encoding.UTF8.GetBytes(json);
+            byte[] body =
+                System.Text.Encoding.UTF8.GetBytes(json);
 
             request.uploadHandler = new UploadHandlerRaw(body);
             request.downloadHandler = new DownloadHandlerBuffer();
@@ -203,12 +204,14 @@ public class OllamaService : MonoBehaviour
             try
             {
                 ollamaResponse =
-                    JsonUtility.FromJson<OllamaResponse>(responseBody);
+                    JsonUtility.FromJson<OllamaResponse>(
+                        responseBody);
             }
             catch (Exception e)
             {
                 onError?.Invoke(
                     $"Ollama yanıtı okunamadı: {e.Message}");
+
                 yield break;
             }
 
@@ -217,6 +220,7 @@ public class OllamaService : MonoBehaviour
                 onError?.Invoke(
                     "Ollama yanıtı okunamadı. Ham yanıt:\n" +
                     responseBody);
+
                 yield break;
             }
 
@@ -224,14 +228,17 @@ public class OllamaService : MonoBehaviour
             {
                 onError?.Invoke(
                     CreateModelError(ollamaResponse.error));
+
                 yield break;
             }
 
-            if (string.IsNullOrWhiteSpace(ollamaResponse.response))
+            if (string.IsNullOrWhiteSpace(
+                ollamaResponse.response))
             {
                 onError?.Invoke(
                     "Ollama response alanı boş. Ham yanıt:\n" +
                     responseBody);
+
                 yield break;
             }
 
@@ -239,13 +246,25 @@ public class OllamaService : MonoBehaviour
 
             try
             {
+                Debug.Log(
+                    "[OLLAMA INNER JSON]:\n" +
+                    ollamaResponse.response);
+
                 decision = JsonUtility.FromJson<NPCDecision>(
                     ollamaResponse.response);
+
+                Debug.Log(
+                    $"[NPC DECISION] Action: {decision?.action}, " +
+                    $"Dialogue: {decision?.dialogue}, " +
+                    $"Persuaded: {decision?.persuaded}, " +
+                    $"Insulted: {decision?.insulted}"
+                );
             }
             catch (Exception e)
             {
                 onError?.Invoke(
                     $"NPC kararı okunamadı: {e.Message}");
+
                 yield break;
             }
 
@@ -255,36 +274,56 @@ public class OllamaService : MonoBehaviour
             {
                 onError?.Invoke(
                     "NPC kararı eksik. action ve dialogue gerekli.");
+
                 yield break;
             }
 
             decision.action =
                 decision.action.Trim().ToUpperInvariant();
 
-            if (decision.action == "PERSUADED")
-            {
-                decision.action = decision.persuaded
-                    ? "FOLLOW"
-                    : "STAY";
-            }
-
-            if (decision.action == "FOLLOWING")
-                decision.action = "FOLLOW";
-
-            if (decision.action == "WAIT" ||
-                decision.action == "REMAIN" ||
-                decision.action == "NOT_PERSUADED")
+            // Hakaret varsa action ne olursa olsun STAY'e zorla.
+            if (decision.insulted)
             {
                 decision.action = "STAY";
-            }
+                decision.persuaded = false;
 
-            if (decision.action != "FOLLOW" &&
-                decision.action != "STAY")
+                Debug.LogWarning(
+                    "[NPC KARARI] Hakaret tespit edildi. " +
+                    "Oyuncu kaybedecek.",
+                    this);
+            }
+            else
             {
-                onError?.Invoke(
-                    $"Geçersiz NPC kararı: {decision.action}\n" +
-                    "Beklenen değerler: FOLLOW veya STAY.");
-                yield break;
+                if (decision.action == "PERSUADED")
+                {
+                    decision.action = decision.persuaded
+                        ? "FOLLOW"
+                        : "STAY";
+                }
+
+                if (decision.action == "FOLLOWING")
+                    decision.action = "FOLLOW";
+
+                if (decision.action == "WAIT" ||
+                    decision.action == "REMAIN" ||
+                    decision.action == "NOT_PERSUADED")
+                {
+                    decision.action = "STAY";
+                }
+
+                if (decision.action != "FOLLOW" &&
+                    decision.action != "STAY")
+                {
+                    onError?.Invoke(
+                        $"Geçersiz NPC kararı: {decision.action}\n" +
+                        "Beklenen değerler: FOLLOW veya STAY.");
+
+                    yield break;
+                }
+
+                // Action tek doğruluk kaynağıdır.
+                decision.persuaded =
+                    decision.action == "FOLLOW";
             }
 
             onSuccess?.Invoke(decision);
@@ -310,7 +349,8 @@ public class OllamaService : MonoBehaviour
         using (UnityWebRequest request =
                new UnityWebRequest(ollamaUrl, "POST"))
         {
-            byte[] body = System.Text.Encoding.UTF8.GetBytes(json);
+            byte[] body =
+                System.Text.Encoding.UTF8.GetBytes(json);
 
             request.uploadHandler = new UploadHandlerRaw(body);
             request.downloadHandler = new DownloadHandlerBuffer();
@@ -341,12 +381,14 @@ public class OllamaService : MonoBehaviour
             try
             {
                 ollamaResponse =
-                    JsonUtility.FromJson<OllamaResponse>(responseBody);
+                    JsonUtility.FromJson<OllamaResponse>(
+                        responseBody);
             }
             catch (Exception e)
             {
                 onError?.Invoke(
                     $"Ollama yanıtı okunamadı: {e.Message}");
+
                 yield break;
             }
 
@@ -355,6 +397,7 @@ public class OllamaService : MonoBehaviour
                 onError?.Invoke(
                     "Ollama yanıtı okunamadı. Ham yanıt:\n" +
                     responseBody);
+
                 yield break;
             }
 
@@ -362,13 +405,16 @@ public class OllamaService : MonoBehaviour
             {
                 onError?.Invoke(
                     CreateModelError(ollamaResponse.error));
+
                 yield break;
             }
 
-            if (string.IsNullOrWhiteSpace(ollamaResponse.response))
+            if (string.IsNullOrWhiteSpace(
+                ollamaResponse.response))
             {
                 onError?.Invoke(
                     "Ollama boş özlü söz yanıtı döndürdü.");
+
                 yield break;
             }
 
@@ -376,13 +422,15 @@ public class OllamaService : MonoBehaviour
 
             try
             {
-                quoteResponse = JsonUtility.FromJson<QuoteResponse>(
-                    ollamaResponse.response);
+                quoteResponse =
+                    JsonUtility.FromJson<QuoteResponse>(
+                        ollamaResponse.response);
             }
             catch (Exception e)
             {
                 onError?.Invoke(
                     $"Özlü söz yanıtı okunamadı: {e.Message}");
+
                 yield break;
             }
 
@@ -391,6 +439,7 @@ public class OllamaService : MonoBehaviour
             {
                 onError?.Invoke(
                     "Özlü söz yanıtı geçersiz veya boş.");
+
                 yield break;
             }
 
