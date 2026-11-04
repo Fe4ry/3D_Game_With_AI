@@ -43,9 +43,10 @@ private StarterAssets.ThirdPersonController playerMovementController;
     [Header("NPC Takip")]
     [SerializeField] private NPCFollowPlayer npcFollowPlayer;
 
-    [Header("NPC Kişiliği")]
-    [SerializeField] private PersonalityType personalityType =
-        PersonalityType.Sevecen;
+[Header("NPC Kişiliği")]
+    [SerializeField] private TMP_Text personalityLabel;
+
+private PersonalityType personalityType;
 
     private const int MaxAttempts = 3;
 
@@ -123,8 +124,12 @@ private StarterAssets.ThirdPersonController playerMovementController;
 
     private void Start()
     {
+            RandomizePersonality();
         if (npcFollowPlayer != null)
             npcFollowPlayer.SetFollowing(false);
+
+        if (personalityLabel!=null)
+        personalityLabel.text = "NPC Kişiliği: " + personalityType.ToString();
     }
 
     private void OnDestroy()
@@ -738,4 +743,19 @@ private void HandleOllamaError(string error)
         if (dialogueUI != null)
             dialogueUI.ShowError(message);
     }
+
+
+    private void RandomizePersonality()
+{
+    int personalityCount = System.Enum.GetValues(
+        typeof(PersonalityType)
+    ).Length;
+
+    personalityType = (PersonalityType)Random.Range(
+        0,
+        personalityCount
+    );
+
+    Debug.Log($"Rastgele NPC kişiliği: {personalityType}");
+}
 }
