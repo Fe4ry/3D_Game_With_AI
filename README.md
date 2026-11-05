@@ -1,382 +1,304 @@
 # Kocaeli Üniversitesi – Bilişim Sistemleri Mühendisliği
-## Yazılım Geliştirme Laboratuvarı-I | Proje-1
+## Yazılım Geliştirme Laboratuvarı-I Dersi | Proje-1
 # 3D Yapay Zekâ Destekli Macera Oyunu (3D_Game_With_AI)
-
+ 
 ---
-
-## Proje Hakkında
-
-Bu proje, Kocaeli Üniversitesi Teknoloji Fakültesi Bilişim Sistemleri Mühendisliği Yazılım Geliştirme Laboratuvarı-I dersi kapsamında geliştirilmiş 3 boyutlu bir macera oyunudur. Çalışmanın merkezinde, modern oyun motoru mimarisi ile yerel yapay zekâ (Local LLM) teknolojilerinin ve otonom navigasyon algoritmalarının uçtan uca entegrasyonu yer almaktadır.
-
-Projeyi öne çıkaran temel özellik, harici bulut servislerine bağımlı olmadan, tamamen yerel donanımda çalışan bir Büyük Dil Modeli (Ollama / `gemma3:4b`) ile oyuncunun serbest metin (`TMP_InputField`) kullanarak iletişim kurması ve yapay zekânın ürettiği kararların yapılandırılmış JSON çıktısı üzerinden anlık oyun durumuna (State) dönüştürülmesidir.
-
+ 
+## 1. Giriş
+ 
+### 1.1 Proje Bilgileri
+- **Proje Adı:** 3D Yapay Zekâ Destekli Macera Oyunu (`3D_Game_With_AI`)
+- **Kurum:** Kocaeli Üniversitesi, Teknoloji Fakültesi, Bilişim Sistemleri Mühendisliği
+- **Ders:** Yazılım Geliştirme Laboratuvarı-I (2026–2027 Güz Dönemi)
+- **Tarih:** 6 Kasım 2026
+- **Ekip Üyeleri:**
+  - **Fahreddin** (Öğrenci No: `251307118`, E-posta: `251307118@kocaeli.edu.tr`)
+  - **Burak Uçar** (Öğrenci No: `251307117`, E-posta: `251307117@kocaeli.edu.tr`)
+ 
+### 1.2 Problem Tanımı ve Amaç
+Klasik video oyunlarında NPC (Non-Player Character) diyalogları ve karar mekanizmaları çoğunlukla önceden yazılmış sabit durum ağaçlarına (hardcoded branch) veya statik seçim listelerine dayanmaktadır. Bu yaklaşım oyuncunun serbestçe kendini ifade edebilmesini engellemekte, öngörülebilir ve tekrara düşen bir oynanış doğurmaktadır.
+ 
+Bu projenin amacı; modern bir oyun motoru (Unity 2022.3 LTS) üzerinde, harici bulut API'lerine bağımlı olmaksızın tamamen yerel donanımda çalışan bir Büyük Dil Modeli (Local LLM - Ollama / `gemma3:4b`) ile entegre, serbest metin tabanlı (`TMP_InputField`) dinamik bir NPC ikna mekanizması kurmaktır. Aynı zamanda modelin ürettiği yapılandırılmış JSON çıktısını ayrıştırarak, oyuncuyu harita boyunca otonom olarak takip eden `NavMesh` tabanlı ve fiziksel çevreyi ışınlarla algılayan `Raycast` sensörlü bir yapay zekâ refakatçisi (Companion) oluşturmak; böylece dil modeli, otonom yol bulma ve sensör algılama sistemlerini tek bir oynanış döngüsünde birleştirmektir.
+ 
+### 1.3 Genel Oyun Senaryosu
+Oyun, terk edilmiş bir kentsel harabe bölgesinde geçer:
+1. **Karşılaşma:** Oyuncu üçüncü şahıs kontrolündeki karakteriyle (`PlayerArmatureK`) haritada ilerler ve parmaklıklar ardında tutsak kalmış bir mahkûm NPC (`Mahkum1` / `NPC`) ile karşılaşır.
+2. **Sensör Doğrulaması:** Mahkûm karakter üzerindeki `NPCSensor` bileşeni, fiziksel ışın atımlarıyla (`Physics.Raycast`) oyuncunun görüş alanında olup olmadığını ve aralarında bir engel bulunup bulunmadığını doğrular. Görüş hattı netleştiğinde etkileşim bildirimi ekranda belirir.
+3. **Kişilik ve İkna Müzakeresi:** Mahkûm, oyun başında 4 farklı psikolojik mizaçtan birini (**Sevecen**, **Korkak**, **Egoist**, **Saldırgan**) rastgele üstlenir. Oyuncunun mahkûmu kendisiyle birlikte kaçmaya ikna etmek için **3 deneme hakkı** bulunur.
+4. **Serbest Metin Girişi:** Oyuncu **E** tuşuyla diyaloğu başlatır; açılan arayüzde klavyeden istediği cümleyi serbestçe yazar. Oyuncu yazarken karakter hareket kontrolleri (`CanMove = false`) kilitlenir.
+5. **Yapay Zekâ Kararı ve Rol Değişimi:** Yerel LLM, oyuncunun mesajını ve NPC mizacını analiz eder. Eğer teklif ikna edici bulunursa `FOLLOW` kararı verilir; mahkûm refakatçiye (Companion) dönüşerek `NavMeshAgent` ile oyuncuyu takip etmeye başlar.
+6. **Hakaret ve Kaybetme:** Oyuncu mahkûma kaba veya aşağılayıcı ifadeler kullanırsa model bunu tespit eder (`insulted: true`), ahlak kütüphanesinden (`MoralQuotes`) bir söz gösterilerek oyun kaybedilir. 3 deneme hakkı tükenirse de ikna başarısızlığı nedeniyle oyun biter.
+7. **Kaçış ve Zafer:** İkna edilen refakatçi ile oyuncu haritanın çıkışındaki güvenli bölgeye (`GreenZone` / `EscapeZone`) ulaştığında senaryo zaferle tamamlanır.
+ 
 ---
-
-## Projenin Amacı ve Hikâyesi
-
-### Projenin Amacı
-Projenin temel amacı; oyun dünyasında nesne yönelimli programlama (OOP) ve asenkron programlama prensiplerini kullanarak iki temel yapay zekâ bileşenini başarıyla çalıştırmaktır:
-1. **NavMesh Tabanlı Otonom Refakatçi (Companion):** Oyun alanında engelleri hesaplayarak dinamik yol bulan ve oyuncuyu takip eden yapay zekâ ajanı.
-2. **Yerel LLM Destekli Dinamik Karar Mekanizması:** Oyuncunun klavyeden girdiği serbest metinleri, karakterin o anki psikolojik kişiliğine göre değerlendirip yapılandırılmış JSON formatında aksiyon üreten NPC.
-
-### Hikâye ve Oynanış Senaryosu
-Oyuncu, terk edilmiş bir kentsel harabe bölgesinde tutsak kalmış bir mahkûm karakterle (`Mahkum1` / `NPC`) karşılaşır. Çıkış kapısı (`EscapeZone` / `GreenZone`) haritanın güvenli bölgesindedir; ancak mahkûm güvensizlik ve korku nedeniyle oyuncuyla doğrudan kaçmayı reddeder.
-
-Oyundaki mahkûm karakter, oyun her başladığında 4 farklı psikolojik kişilikten birini rastgele üstlenir (**Sevecen**, **Korkak**, **Egoist**, **Saldırgan**). Oyuncunun mahkûmu ikna etmek için **3 deneme hakkı** bulunur:
-- Oyuncu mahkûma yaklaşarak (**E** tuşu ile) iletişimi başlatır.
-- Açılan diyalog panelinde metin kutusuna (`TMP_InputField`) dilediği serbest ikna argümanını yazar ve gönderir.
-- Yazı yazılırken oyuncunun hareket kontrolleri kilitlenir; böylece klavye tuşlarının karakteri hareket ettirmesi engellenir.
-- Yerel LLM, oyuncunun sunduğu argümanı ve mahkûmun kişiliğini analiz eder. İkna başarılı olursa `FOLLOW` kararı döner; mahkûm oyuncunun refakatçisine (Companion) dönüşür ve `NavMeshAgent` devreye girerek oyuncuyu takip etmeye başlar.
-- Eğer oyuncu 3 hakkı içinde mahkûmu ikna edemezse veya diyalog sırasında mahkûma hakaret eder / aşağılayıcı bir dil kullanırsa, LLM tarafından hakaret tespit edilir (`insulted: true`) ve oyun kaybedilir.
-- İkna edilen mahkûm ile oyuncu güvenli kaçış bölgesine (`GreenZone`) ulaştığında senaryo zaferle tamamlanır.
-
----
-
-## Kullanılan Teknolojiler
-
-| Kategori | Teknoloji / Araç | Sürüm / Detay | Kullanım Amacı |
-| :--- | :--- | :--- | :--- |
-| **Oyun Motoru** | Unity Editor | 2022.3.62f3 LTS | Ana oyun motoru ve sahne yönetimi |
-| **Render Hattı** | Universal Render Pipeline (URP) | 14.0.12 | Optimize edilmiş grafik ve ışıklandırma |
-| **Programlama Dili** | C# | .NET Standard 2.1 | Oyun mantığı ve mimari geliştirme |
-| **Giriş Sistemi** | Unity New Input System | 1.14.0 | Oyuncu hareket ve fare kontrolleri |
-| **Kamera & Görsel** | Cinemachine | 2.10.3 | 3. şahıs serbest kamera takibi |
-| **Yol Bulma** | Unity AI Navigation (NavMesh) | 1.1.7 | Companion için 3D yüzey navigasyonu ve engel aşma |
-| **Yerel LLM Motoru** | Ollama | REST API (v1) | Yerel yapay zekâ sunucusu (`http://localhost:11434`) |
-| **Büyük Dil Modeli** | `gemma3:4b` | 4 Milyar Parametre (Quantized) | Karakter kişiliği, karar verme ve diyalog üretimi |
-| **Kullanıcı Arayüzü** | TextMeshPro (TMP) & uGUI | 3.0.7 | Serbest metin girişi, diyalog kutusu ve bildirimler |
-
----
-
-## Oyun Mekanikleri
-
-1. **Oyuncu Hareketi ve Kontroller:**
-   - Unity Starter Assets Third Person Controller altyapısı kullanılmaktadır.
-   - **W, A, S, D:** Yürüme ve yönelme.
-   - **Left Shift:** Koşma (Sprint).
-   - **Space:** Zıplama.
-   - **E:** Mahkûm ile diyaloğu başlatma.
-   - **Mouse Sol Tık:** Metin kutusuna odaklanma ve Gönder (Submit) butonuna tıklama.
-2. **Klavye Giriş Kilitleme (Input Guard):**
-   - `playerInputField.onSelect` tetiklendiğinde `ThirdPersonController.CanMove = false` yapılır. Oyuncu diyalog kutusuna yazı yazarken "W, A, S, D, Space" tuşları karakteri hareket ettirmez.
-   - Metin kutusundan çıkıldığında (`onDeselect`) hareket serbest bırakılır.
-3. **Dinamik 3D Konuşma Balonu (Billboard UI):**
-   - Mahkûmun başı üzerinde konumlanan `DialogueUI`, metin uzunluğuna göre boyutunu otomatik ayarlar (`preferredWidth/preferredHeight`).
-   - `LateUpdate` içerisinde her karede açısını `Camera.main` yönüne çevirerek her zaman oyuncuya dik kalır.
-4. **Kaçış ve Kazanma Alanı (Escape Zone):**
-   - Çıkış kapısında `EscapeZoneTrigger` bileşeni yer alır.
-   - Bölgeye sadece oyuncunun girmesi yeterli değildir; mahkûmun da bölgeye girmesi ve ikna edilmiş olması (`isPersuaded == true`) kontrol edilir. Her iki koşul sağlandığında `WinPanel` açılır ve oyun kazanılır.
-
----
-
-## Yapay Zekâ Destekli NPC Sistemi
-
-Projedeki NPC sistemi, önceden tanımlanmış sabit diyalog ağaçları yerine tamamen üretken yapay zekâya (LLM) dayalı dinamik bir yapıya sahiptir.
-
-### NPC Kişilik ve Karar Mekanizması
-NPC her oyun oturumu başladığında `RandomizePersonality()` metodu aracılığıyla 4 temel kişilik tipinden birini dinamik olarak seçer. Arayüzde yer alan kişilik etiketi (`personalityLabel`) sayesinde oyuncu hangi karakterle konuştuğunu takip edebilir.
-
+ 
+## 2. Otonom AI Kahraman (Companion) ve Sensör Sistemi
+ 
+### 2.1 Hareket ve Yol Bulma Mekanizması
+Projede `ML-Agents` takviyeli öğrenme paketi kullanılmamış; endüstri standardı olan **Unity AI Navigation (`com.unity.ai.navigation: 1.1.7`)** altyapısı ve sahneye fırınlanmış (baked) 3D **NavMesh** yüzeyi tercih edilmiştir.
+ 
+Companion rolündeki mahkûm karakter, `NPCFollowPlayer.cs` sınıfı ve `NavMeshAgent` bileşeni üzerinden kontrol edilir:
+- **Hız (Speed):** `3.0` birim (Oyuncunun normal yürüme hızıyla tam senkronize).
+- **İvme (Acceleration):** `8.0` birim (Ani dur-kalklarda sarsıntıyı önleyen yumuşak ivmelenme).
+- **Durma Mesafesi (Stopping Distance):** `1.8f` birim (Oyuncunun kişisel alanına çarpmadan arkasında durma eşiği).
+- **Rota Güncelleme Periyodu (`updateInterval`):** `0.2` saniye (5 Hz). Her karede `SetDestination` çağrısının getireceği CPU A* yükünü önlemek için periyodik timer kullanılır.
+ 
+### 2.2 Takip ve Animasyon Senkronizasyonu
+Ajanın anlık fiziksel yer değiştirme büyüklüğü (`agent.velocity.magnitude`), Animator Controller üzerindeki `Speed` float parametresine ve çarpan görevi gören `MotionSpeed` parametresine aktarılır. Bu sayede ajan durduğunda `Idle`, yürüdüğünde hızıyla tam uyumlu `Walk_N` animasyonu oynatılır; ayak kayması (foot sliding) problemi engellenir.
+ 
+### 2.3 Raycast Tabanlı Sensör ve Görüş Alanı Sistemi (`NPCSensor.cs`)
+Projede, otonom ajanın çevresindeki engelleri ve hedef oyuncuyu algılayabilmesi amacıyla **`NPCSensor.cs`** sınıfı geliştirilmiş ve NPC nesnesine entegre edilmiştir.
+ 
 ```csharp
-public enum PersonalityType
+public class NPCSensor : MonoBehaviour
 {
-    Sevecen,
-    Korkak,
-    Egoist,
-    Saldirgan
+    [Header("Sensor Settings")]
+    [SerializeField] private Transform sensorOrigin;
+    [SerializeField] private float detectionDistance = 2.5f;
+    [SerializeField] private LayerMask obstacleLayers = ~0;
+ 
+    public bool HasObstacle { get; private set; }
+    public float ObstacleDistance { get; private set; }
+    public GameObject DetectedObject { get; private set; }
+    ...
 }
 ```
-
-1. **Sevecen:** Samimiyete, iyi niyete ve dürüstlüğe önem verir. Yardım tekliflerini ve nazik yaklaşımları kolayca kabul eder.
-2. **Korkak:** Güvenlik ve hayatta kalma odaklıdır. Belirsiz vaatlerden endişelenir; ancak net bir koruma ve güvenlik güvencesi verildiğinde ikna olur.
-3. **Egoist:** Kendi çıkarını ve kaçış ihtimalini gözetir. Laf kalabalığı yerine kaçışın kendisine ne kazandıracağını bilmek ister.
-4. **Saldırgan:** Bağımsızlığına ve gücüne düşkündür. Kendisine emir verilmesinden veya zayıf görülmesinden nefret eder. Eşit bir ortaklık ve saygılı bir teklif sunulduğunda kendi iradesiyle iş birliğini kabul eder.
-
-### Hakaret Tespiti ve Etik Sınırlar
-Oyun motoru, oyuncunun NPC'ye karşı sergilediği tutumu denetler. System Prompt içerisinde katı bir hakaret algılama kuralı (`CRITICAL PLAYER BEHAVIOR RULE`) yer alır. Eğer oyuncu kaba, aşağılayıcı veya zorba bir üslup kullanırsa model `insulted: true` döner:
-- `NPCController` anında diyaloğu keser, deneme haklarını sıfırlar.
-- Projede tanımlı ahlak ve erdem sözleri kütüphanesinden (`MoralQuotes`) rastgele bir söz seçilerek ekranda gösterilir ve oyun *"Oyunu kaybettin, vay ZORBA vay..."* bildirimiyle kaybedilir.
-
+ 
+Sensör sistemi iki temel işlevi yerine getirir:
+1. **Sürekli Çevresel Engel Algılama (`DetectObstacle`):**
+   - Karakterin göğüs/baş hizasındaki referans noktasından (`sensorOrigin`), karakterin baktığı yöne (`transform.forward`) doğru `Physics.Raycast` fırlatılır.
+   - Algılama mesafesi dahilinde (`detectionDistance = 2.5m`) bir engel bulunduğunda `HasObstacle = true`, `ObstacleDistance = _hit.distance` ve `DetectedObject = _hit.collider.gameObject` değerleri güncellenir.
+   - Sahne ekranında (Scene View) görsel hata ayıklama için `Debug.DrawRay` kullanılır; yol açıkken **yeşil**, önünde engel varken **kırmızı** ışın çizilir.
+2. **Görüş Hattı ve Hedef Algılama (`CanDetect(Transform target)`):**
+   - Oyuncunun tam konumuna doğru yön vektörü hesaplanır: `(targetPoint - origin).normalized`.
+   - Arada bir engel (duvar, parmaklık, nesne) olup olmadığı `Physics.Raycast` ile taranır.
+   - Işın doğrudan oyuncunun collider'ına çarpıyorsa hedef algılanmış sayılır (`hit.transform == target`).
+3. **`NPCInteraction.cs` ile Entegrasyon:**
+   - Oyuncunun sadece NPC'ye yaklaşması (mesafe) yeterli değildir; `NPCInteraction.Update()` döngüsünde `npcSensor.CanDetect(player)` çağrılır.
+   - Ajan oyuncuyu Raycast ile doğrudan gördüğünde ekranda "E - Konuş" etkileşim promptu aktifleşir ve diyaloğa izin verilir.
+ 
+### 2.4 Companion Karar, Algılama ve Davranış Akış Şeması
+ 
+```mermaid
+flowchart TD
+    A([Oyun Başlangıcı]) --> B[NPCSensor Devrede: Raycast ile Çevre Taraması]
+    B --> C[NPC Pasif Durumda: isFollowing = false]
+   
+    C --> D{NPCSensor.CanDetect Player?<br/>Raycast Görüş Hattı Net mi?}
+    D -- Hayır / Engel Var --> C
+    D -- Evet: Oyuncu Algılandı --> E[Ekranda 'E - Konuş' Promptu Gösterilir]
+   
+    E --> F{Oyuncu 'E'ye Bastı mı?}
+    F -- Evet --> G[Ollama Diyalog ve İkna Müzakeresi Başlar]
+    F -- Hayır --> C
+   
+    G --> H{Ollama Kararı: FOLLOW?}
+    H -- Hayır / İkna Başarısız --> C
+    H -- Evet: İkna Başarılı --> I[SetFollowing true: isFollowing = true]
+   
+    I --> J[Timer Kontrolü: updateTimer >= 0.2s?]
+    J -- Hayır --> J
+    J -- Evet --> K[Mesafe Ölçümü: Vector3.Distance NPC, Player]
+   
+    K --> L{Mesafe <= 1.8f?}
+    L -- Evet: Oyuncunun Yanında --> M[agent.isStopped = true<br/>agent.ResetPath()]
+    M --> N[Animatör Hızı = 0: Idle Animasyonu]
+   
+    L -- Hayır: Oyuncu Uzakta --> O[agent.isStopped = false<br/>agent.SetDestination player.position]
+    O --> P[Animatör Hızı = agent.velocity.magnitude: Walk Animasyonu]
+   
+    N --> R{EscapeZone Alanına Girildi mi?}
+    P --> R
+    R -- Evet + Oyuncu da Alanda --> S([OYUN KAZANILDI - WinPanel])
+    R -- Hayır --> J
+```
+ 
 ---
-
-## Ollama ve LLM Entegrasyonu
-
-### Neden Yerel LLM Tercih Edildi?
-- **Harici API Bağımsızlığı:** İnternet kesintilerinden, sunucu kotalarından veya ücretli API anahtarlarından tamamen bağımsızdır.
-- **Düşük Gecikme ve Veri Gizliliği:** Model yerel GPU (NVIDIA RTX) veya CPU üzerinde çalışır.
-- **Deterministik JSON Formatı:** Ollama motorunun `format: "json"` parametresi sayesinde çıktının kesin olarak JSON veri şemasında üretilmesi sağlanır.
-
-### İstek ve Yanıt Altyapısı
-Unity ile Ollama arasındaki iletişim `OllamaService.cs` sınıfı tarafından yürütülür. İstekler ana oyun döngüsünü (Main Thread) kilitlememek için `IEnumerator` coroutine'i ve `UnityWebRequest` ile asenkron olarak gönderilir:
-- **Uç Nokta (Endpoint):** `http://localhost:11434/api/generate`
-- **HTTP Metodu:** `POST`
-- **Zaman Aşımı (Timeout):** 60 saniye
-- **İstek Gövdesi (Payload):**
-  ```json
-  {
-    "model": "gemma3:4b",
-    "prompt": "...[System Prompt + Oyuncu Mesajı]...",
-    "stream": false,
-    "format": "json"
-  }
-  ```
-
----
-
-## JSON ile Oyun Kontrolü
-
-Modelin metinsel yanıtı ile oyun dünyasında çalıştırılacak mantık birbirinden katı kurallarla ayrılmıştır. LLM'in cevabı sadece metin olarak kalmaz; oyun kodlarının doğrudan okuyup karara varacağı yapılandırılmış bir JSON şemasına zorlanır.
-
-### Modelden İstenen JSON Şeması
+ 
+## 3. LLM Entegrasyonu
+ 
+### 3.1 Yerel Model ve Ollama Mimarisi
+- **Model:** `gemma3:4b` (Google Gemma 3 mimarisi, 4 milyar parametre, 4-bit quantize).
+- **Sunucu:** Yerel REST API (`http://localhost:11434/api/generate`).
+- **Neden Yerel LLM:** Harici API anahtarlarına ihtiyaç duymaması, veri gizliliği sunması, sıfır maliyetle sınırsız deneme imkânı tanıması ve `format: "json"` desteğiyle deterministik yapılandırılmış veri üretmesi.
+ 
+### 3.2 Sistem Promptu Tasarımı
+`NPCController.cs` içerisinde her istek için dinamik olarak inşa edilen sistem promptu, modele aşağıdaki görev ve kuralları yükler:
+1. **Hakaret Algılama Önceliği (`CRITICAL PLAYER BEHAVIOR RULE`):** Oyuncu mesajında kişisel hakaret, aşağılama, küfür veya zorbalık varsa diğer değerlendirmeler göz ardı edilerek `insulted: true`, `action: "STAY"`, `persuaded: false` dönülmelidir.
+2. **Kişilik Şablonları:**
+   - *Sevecen:* Dürüstlüğe, samimiyete ve ortak kurtuluşa değer verir.
+   - *Korkak:* Güvenlik ve net koruma vaatleriyle ikna olur; belirsizlikten kaçınır.
+   - *Egoist:* Kendi menfaatini ve kaçış avantajını ön planda tutar.
+   - *Saldırgan:* Bağımsızlığına düşkündür, boyun eğmez; eşit ortaklık ve saygılı teklifleri değerlendirir.
+3. **Katı JSON Kuralı:** Yanıt yalnızca `action`, `dialogue`, `persuaded` ve `insulted` alanlarını içeren geçerli bir JSON olmalıdır. Markdown veya ek metin üretilmesi yasaktır.
+ 
+### 3.3 JSON Şeması ve C# Sınıf Eşleşmesi
+ 
+**Modelden Dönen JSON Örneği:**
 ```json
 {
   "action": "FOLLOW",
-  "dialogue": "Tamam, benimle gel. Dikkatli olmalıyız.",
+  "dialogue": "Tamam, seninle geliyorum. Buradan bir an önce çıkalım.",
   "persuaded": true,
   "insulted": false
 }
 ```
-
-### Karşılık Gelen C# Veri Modeli
-`OllamaService.cs` içerisinde tanımlı `NPCDecision` sınıfı, `JsonUtility.FromJson` vasıtasıyla ham yanıtı nesneye dönüştürür:
-
+ 
+**`OllamaService.cs` İçerisindeki Veri Modeli:**
 ```csharp
 [System.Serializable]
 public class NPCDecision
 {
     public string action;     // "FOLLOW" veya "STAY"
-    public string dialogue;   // Karakterin Türkçe konuşma metni
-    public bool persuaded;    // İkna durumu (true / false)
+    public string dialogue;   // Mahkûmun Türkçe konuşma cümlesi
+    public bool persuaded;    // İkna sonucu (true / false)
     public bool insulted;     // Hakaret algılandı mı? (true / false)
 }
 ```
-
-### JSON Alanlarının Oyun Durumuna Bağlanması
-- **`insulted == true`:** Hakaret durumu tespit edilmiştir. Oyun sonu paneli (`ShowLoseScreen`) tetiklenir ve oyun sonlanır.
-- **`action == "FOLLOW"` ve `persuaded == true`:** Mahkûm ikna edilmiştir. `NPCFollowPlayer.SetFollowing(true)` çalıştırılır; `dialogueChoicePanel` kapatılır; NPC refakatçi durumuna geçer.
-- **`action == "STAY"` ve `persuaded == false`:** İkna reddedilmiştir. Kalan deneme hakkı 1 düşürülür. Eğer hak biterse (`remainingAttempts <= 0`) `ShowFinalFailureAfterDelay` ile kaybetme ekranı açılır.
-- **Eylem Normalizasyonu:** `OllamaService`, modelin üretebileceği olası küçük harfli veya varyant çıktıları (`PERSUADED`, `FOLLOWING`, `WAIT`, `REMAIN`) standart `FOLLOW` ve `STAY` değerlerine otomatik dönüştürerek oyun mantığının bozulmasını engeller.
-
----
-
-## Companion ve NavMesh Sistemi
-
-İkna süreci tamamlandıktan sonra mahkûm karakter otonom bir yol arkadaşına (Companion) dönüşür.
-
-### NavMesh ve NavMeshAgent Yapılandırması
-Karakterin navigasyonunda Unity'nin dahili **NavMesh** yüzeyi ve `NavMeshAgent` bileşeni kullanılır:
-- **Hız (Speed):** `3.0` birim (Oyuncunun yürüme hızıyla tam uyumlu).
-- **İvme (Acceleration):** `8.0` birim (Dönüşlerde ve kalkışlarda akıcı hareket).
-- **Durma Mesafesi (Stopping Distance):** `1.8f` birim (Oyuncunun içine girmesini önler).
-- **Yol Güncelleme Sıklığı (`updateInterval`):** `0.2` saniye (5 Hz). Her karede rota hesaplama maliyeti engellenerek CPU yükü optimize edilir.
-
-### Takip ve Animasyon Senkronizasyonu
-`NPCFollowPlayer.cs` sınıfı takip mekanizmasını ve yürüme animasyonunu senkronize biçimde yönetir:
-1. Oyuncu ile refakatçi arasındaki mesafe `Vector3.Distance` ile kontrol edilir.
-2. Mesafe `1.8f` üzerindeyse `agent.isStopped = false` yapılır ve `agent.SetDestination(player.position)` ile hedef oyuncunun konumu olarak atanır.
-3. Mesafe `1.8f` altına indiğinde ajan durdurulur (`agent.isStopped = true; agent.ResetPath();`).
-4. Ajanın anlık fiziksel hızı (`agent.velocity.magnitude`), Animator Controller üzerindeki `Speed` ve `MotionSpeed` parametrelerine aktarılır:
-   ```csharp
-   if (animator != null && animator.isActiveAndEnabled)
-   {
-       float movementSpeed = agent.velocity.magnitude;
-       animator.SetFloat(speedParameter, movementSpeed, animationDampTime, Time.deltaTime);
-   }
-   ```
-   Bu sayede karakter durduğunda doğal olarak `Idle`, hareket ettiğinde ise hızıyla orantılı olarak `Walk_N` animasyonuna geçer.
-
----
-
-## Yazılım Mimarisi
-
-Proje, sorumlulukların net olarak ayrıldığı katmanlı ve nesne yönelimli (OOP) bir mimariye sahiptir.
-
-```mermaid
-graph TD
-    subgraph UI_Katmani ["Kullanıcı Arayüzü Katmanı"]
-        DialogueUI["DialogueUI (3D Konuşma Balonu)"]
-        ChoicePanel["dialogueChoicePanel (TMP_InputField & Submit)"]
-        ErrorPanel["connectionErrorPanel (Bağlantı Hatası)"]
-        GameOverPanel["gameOverPanel & WinPanel"]
-    end
-
-    subgraph Karar_Katmani ["Karar ve İş Mantığı Katmanı"]
-        NPCInteraction["NPCInteraction (Mesafe ve 'E' Tuşu)"]
-        NPCController["NPCController (Durum Makinesi & Kişilik)"]
-    end
-
-    subgraph Iletisim_Katmani ["Ağ ve Model Katmanı"]
-        OllamaService["OllamaService (UnityWebRequest REST API)"]
-        OllamaServer["Ollama Server (gemma3:4b Yerel Model)"]
-    end
-
-    subgraph Navigasyon_Katmani ["Navigasyon ve Fizik Katmanı"]
-        NPCFollowPlayer["NPCFollowPlayer (Takip Mantığı)"]
-        NavMeshAgent["NavMeshAgent (Yol Bulma Motoru)"]
-        EscapeZone["EscapeZoneTrigger (Kazanma Kontrolü)"]
-    end
-
-    NPCInteraction -->|StartConversation| NPCController
-    ChoicePanel -->|OnSubmitPlayerInput| NPCController
-    NPCController -->|GetDecision| OllamaService
-    OllamaService -->|HTTP POST JSON| OllamaServer
-    OllamaServer -->|HTTP JSON Response| OllamaService
-    OllamaService -->|NPCDecision Callback| NPCController
-    NPCController -->|ShowDialogue / ShowThinking| DialogueUI
-    NPCController -->|SetFollowing true| NPCFollowPlayer
-    NPCFollowPlayer -->|SetDestination| NavMeshAgent
-    EscapeZone -->|CheckWinCondition| NPCController
-```
-
-### Sınıf ve Script Sorumlulukları
-
-| Sınıf / Script | Dosya Yolu | Temel Sorumluluk |
-| :--- | :--- | :--- |
-| **`NPCController`** | `Assets/Scripts/Companion/NPC/NPCController.cs` | NPC kişilik seçimi, diyalog akışı, kalan deneme hakları, hakaret denetimi ve oyun sonu panellerinin yönetimi. |
-| **`OllamaService`** | `Assets/Scripts/Companion/AI/OllamaService.cs` | Yerel Ollama REST API iletişimi, JSON serileştirme/ayrıştırma, zaman aşımı ve bağlantı hatalarının yönetimi. |
-| **`NPCFollowPlayer`** | `Assets/Scripts/Companion/NPC/NPCFollowPlayer.cs` | Refakatçinin NavMesh üzerinden oyuncuyu takip etmesi, durma mesafesi kontrolü ve Animator parametre senkronizasyonu. |
-| **`DialogueUI`** | `Assets/Scripts/Companion/UI/DialogueUI.cs` | Mahkûmun başı üzerindeki 3D dinamik konuşma balonunun boyutlandırılması ve kameraya dönük tutulması (Billboard). |
-| **`NPCInteraction`** | `Assets/Scripts/Companion/NPC/NPCInteraction.cs` | Oyuncunun mahkûma olan yakınlığını denetleme ve `E` tuşu ile diyaloğu başlatma. |
-| **`EscapeZoneTrigger`** | `Assets/Scripts/Companion/Player/EscapeZoneTrigger.cs` | Kaçış bölgesinde oyuncu ve ikna edilmiş mahkûmun varlığını denetleyerek kazanma durumunu tetikleme. |
-| **`ThirdPersonController`** | `Assets/Starter Assets/.../ThirdPersonController.cs` | Oyuncu hareketi, zıplama ve metin girişi anında kontrollerin kilitlenmesi (`CanMove`). |
-
----
-
-## NPC Diyalog ve Karar Akışı
-
-Aşağıdaki sequence diyagramı, oyuncunun metin kutusuna mesaj yazıp göndermesinden oyun durumunun güncellenmesine kadar olan süreci adım adım göstermektedir:
-
+ 
+### 3.4 İstek / Yanıt ve Oyun Durumuna Aktarma Sıralama Diyagramı
+ 
 ```mermaid
 sequenceDiagram
     autonumber
     actor Oyuncu
-    participant UI as TMP_InputField & UI
-    participant NPC as NPCController
+    participant Sensor as NPCSensor (Raycast)
+    participant Interact as NPCInteraction
+    participant Input as TMP_InputField
+    participant Ctrl as NPCController
     participant Svc as OllamaService
     participant LLM as Ollama (:11434)
     participant Bubble as DialogueUI
     participant Follow as NPCFollowPlayer
-
-    Oyuncu->>UI: Metin kutusuna tıklar (OnPlayerInputSelected)
-    UI->>Oyuncu: Oyuncu hareketleri kilitlenir (CanMove = false)
-    Oyuncu->>UI: İkna mesajını yazar ve "Gönder"e tıklar
-    UI->>NPC: OnSubmitPlayerInput()
-    NPC->>Bubble: ShowThinking() ("Düşünüyor...")
-    NPC->>Svc: GetDecision(prompt, onSuccess, onError)
-    Svc->>LLM: POST /api/generate (gemma3:4b, format: json)
-    Note over LLM: Yerel donanımda çıkarım yapılır
-    LLM-->>Svc: HTTP 200 OK (JSON yanıtı)
+ 
+    Sensor->>Interact: CanDetect(player) == true (Görüş Hattı Açık)
+    Interact->>Oyuncu: Ekranda 'E - Konuş' Bildirimi
+    Oyuncu->>Interact: 'E' Tuşuna Basar
+    Interact->>Ctrl: StartConversation()
+    Ctrl->>Input: Diyalog Paneli Açılır (CanMove = false)
+ 
+    Oyuncu->>Input: İkna mesajını yazar ve Gönder'e tıklar
+    Input->>Ctrl: OnSubmitPlayerInput()
+    Ctrl->>Bubble: ShowThinking() ("Düşünüyor...")
+    Ctrl->>Svc: GetDecision(prompt, onSuccess, onError)
+    Svc->>LLM: POST /api/generate (gemma3:4b, format="json")
+    Note over LLM: Yerel GPU/CPU üzerinde çıkarım yapılır
+    LLM-->>Svc: HTTP 200 OK (JSON Gövdesi)
     Svc->>Svc: JsonUtility.FromJson<NPCDecision>()
-    Svc-->>NPC: onSuccess(NPCDecision)
-
-    alt Hakaret Tespit Edildi (decision.insulted == true)
-        NPC->>NPC: isGameOver = true
-        NPC->>UI: GameOverPanel açılır ("Vay ZORBA vay...", MoralQuote)
+    Svc-->>Ctrl: onSuccess(decision)
+ 
+    alt Hakaret Durumu (decision.insulted == true)
+        Ctrl->>Bubble: ShowDialogue("")
+        Ctrl->>Ctrl: MoralQuotes içinden söz seç
+        Ctrl->>Ctrl: ShowLoseScreen("Vay ZORBA vay...", true)
     else İkna Başarılı (decision.action == "FOLLOW")
-        NPC->>NPC: isPersuaded = true
-        NPC->>Bubble: ShowDialogue(decision.dialogue)
-        NPC->>Follow: SetFollowing(true)
-        NPC->>UI: Diyalog paneli kapanır, kontroller açılır
-    else İkna Reddedildi (decision.action == "STAY")
-        NPC->>NPC: remainingAttempts--
-        NPC->>Bubble: ShowDialogue(decision.dialogue + Kalan Hak)
-        NPC->>UI: Metin kutusu tekrar aktif edilir
+        Ctrl->>Ctrl: isPersuaded = true
+        Ctrl->>Bubble: ShowDialogue(decision.dialogue)
+        Ctrl->>Follow: SetFollowing(true)
+        Ctrl->>Ctrl: SetChoicePanelVisible(false)
+        Note over Follow: NavMeshAgent takibe başlar
+    else İkna Başarısız (decision.action == "STAY")
+        Ctrl->>Ctrl: remainingAttempts--
+        Ctrl->>Bubble: ShowDialogue(decision.dialogue + Kalan Deneme)
+        opt remainingAttempts <= 0
+            Ctrl->>Ctrl: ShowLoseScreen("İKNA EDEMEDİNİZ...", false)
+        end
     end
 ```
-
+ 
 ---
-
-## Hata Yönetimi ve Dayanıklılık (Robustness)
-
-Sistem, çalışma anında oluşabilecek ağ veya model aksaklıklarına karşı dayanıklı şekilde tasarlanmıştır:
-1. **Ollama Sunucusu Kapalı / Ulaşılamıyor:**
-   - İstek başarısız olduğunda `OllamaService` `CONNECTION` kategorisinde bir hata üretir.
-   - `NPCController.HandleOllamaError()` devreye girer; diyalog panelleri kapatılır, oyuncunun ekranında **Bağlantı Hata Paneli (`connectionErrorPanel`)** açılır ve `ReplayGame` butonu sunulur. Oyun asla çökmez (Crash olmaz).
+ 
+## 4. Hata Yönetimi ve Dayanıklılık (Robustness)
+ 
+Projede `OllamaService.cs` ve `NPCController.cs` sınıfları üzerinden çok katmanlı bir hata denetimi uygulanmıştır:
+ 
+1. **Sunucu Erişilemezliği / Ollama Kapalı:**
+   - `request.result != UnityWebRequest.Result.Success` durumu oluştuğunda hata `CONNECTION` kategorisine alınır.
+   - `NPCController.HandleOllamaError()` metodu tetiklenir: Diyalog arayüzü kapatılır, ekranda özel olarak tasarlanmış **Bağlantı Hata Paneli (`connectionErrorPanel`)** açılır ve oyuncuya oyunu yeniden başlatabileceği bir `Retry` butonu sunulur. Oyun kesinlikle donmaz veya çökmez.
 2. **Deneme Hakkının Korunması:**
-   - Eğer ağ hatası veya model hatası meydana gelirse, oyuncunun mevcut deneme hakkı düşürülmez (`remainingAttempts++` yapılarak iade edilir). Oyuncunun yazdığı metin kutuda korunur.
-3. **Zaman Aşımı (Timeout) Koruması:**
-   - 60 saniye boyunca model yanıt vermezse istek `TIMEOUT` olarak işaretlenir ve coroutine güvenli bir şekilde sonlandırılır.
-4. **Bozuk JSON Çıktısı:**
-   - Model beklenmeyen formatta bir veri üretirse `try-catch` blokları hatayı yakalar; konsola detaylı log basılır ve oyun çalışmaya devam eder.
-
+   - Ağ hatası, sunucu çökmesi veya model hatası meydana geldiğinde, başarısız istek ikna denemesi sayılmaz (`remainingAttempts++` yapılarak harcanan hak anında iade edilir). Oyuncunun yazdığı metin kutuda saklanır.
+3. **Zaman Aşımı (Timeout):**
+   - Modelin donması veya aşırı yük altında kalması durumuna karşı `request.timeout = 60` saniye sınırı belirlenmiştir. Süre aşılırsa `TIMEOUT` hatası fırlatılarak coroutine sonlandırılır.
+4. **Geçersiz / Bozuk JSON:**
+   - Model çıktısı `try-catch` blokları ile `JsonUtility.FromJson` işleminden geçirilir. Ayrıştırma hatasında `onError` devreye girer.
+5. **Eksik Alan Doğrulaması:**
+   - Gelen JSON içerisinde `action` veya `dialogue` alanları boş ise yanıt geçersiz sayılarak reddedilir.
+6. **Eylem Normalizasyonu:**
+   - Modelin `FOLLOW` yerine `following`, `STAY` yerine `wait` veya `remain` döndürmesi ihtimaline karşı string temizleme ve normalizasyon filtreleri uygulanmıştır.
+ 
 ---
-
-## Gerçek Test Senaryoları ve Sonuçları
-
-Aşağıdaki veriler, oyun içinde `gemma3:4b` modeliyle gerçekleştirilen gerçek test oturumlarından alınmıştır:
-
-### Test 1: Sevecen Kişilik – Başarılı İkna (Tek Seferde)
-- **Oyuncu Girdisi:** *"Benimle birlikte gelmelisin. Seni yardıma muhtaç birisi gibi gördüm. Benimle gelip birlikte özgürlüğümüze kavuşabiliriz. Ne dersin?"*
-- **Model Yanıtı:** *"Tamam, benimle gel. Ama şunu bil ki, bu özgürlüğümüzü bulacağımız son fırsat olabilir. Dikkatli olmalıyız ve her an tehlikeyi sezmeliyiz."*
-- **Üretilen JSON:**
-  ```json
-  {
-    "personality": "Sevecen",
-    "remainingAttempts": 2,
-    "persuaded": true,
-    "insulted": false,
-    "action": "FOLLOW",
-    "dialogue": "Tamam, benimle gel. Ama şunu bil ki, bu özgürlüğümüzü bulacağımız son fırsat olabilir..."
-  }
-  ```
-- **Oyun Aksiyonu:** `FOLLOW` kararı uygulandı. Mahkûm refakatçiye dönüştü ve oyuncuyu takip etmeye başladı.
-
-### Test 2: Sevecen Kişilik – Hakaret ile Kaybetme
-- **Oyuncu Girdisi:** *"Ulan ne biçim bir durumdasın. Ne ezik birisin sen..."*
-- **Model Yanıtı:** *"Ne demek istiyorsun? Bu tür sözlerle kimseyi incitmek doğru değil. Durumu açıklarsan belki yardımcı olabilirim, ama böyle konuşmak bana zarar veriyor."*
-- **Üretilen JSON:** `{"action": "STAY", "persuaded": false, "insulted": true}`
-- **Oyun Aksiyonu:** Hakaret kuralı tetiklendi. Ahlak sözü gösterilerek oyun *"OYUN KAYBEDİLDİ: Hakaret nedeniyle"* mesajıyla sonlandırıldı.
-
-### Test 3: Korkak Kişilik – Kademeli İkna Denemesi (Başarısız)
-- **1. Deneme:** *"Sana yardım etmek istiyorum. Lütfen benimle gel daha fazla korkmanı istemiyorum..."*
-  - **NPC Tepkisi:** Güvenlik ve bilgi talep etti (`STAY`). Kalan hak: 2.
-- **2. Deneme:** *"Korktuğunu hissettim bu yüzden insancıl duygularım beni sana yardım etmem gerektiğini söyledi..."*
-  - **NPC Tepkisi:** Niyet için teşekkür etti ancak korumanın nasıl olacağını sordu (`STAY`). Kalan hak: 1.
-- **3. Deneme:** *"Seni kendi malikaneme yani güvenli alana götüreceğim orada istediğin gibi yaşayacaksın..."*
-  - **NPC Tepkisi:** Teklifi şüpheli buldu ve karşılık sorguladı (`STAY`).
-- **Oyun Aksiyonu:** 3 deneme hakkı tükendi; `GameOverPanel` açılarak oyun kaybedildi.
-
-### Test 4: Saldırgan Kişilik – Şartlı Müzakere Testi
-- **Oyuncu Girdisi:** *"Burada başkalarının emirlerine boyun eğerek geçireceğin daha fazla zaman yok. Senin kolayca pes edecek biri olmadığını görebiliyorum..."*
-- **Model Yanıtı:** *"Bu teklifin arkasında ne saklıyorsun? 'Özgürlüğü geri kazanmak' gibi laflar kulağa hoş geliyor, ancak senin 'eşit bir ortak' olarak hareket ettiğini nasıl garanti edebilirim?..."*
-- **Üretilen JSON:** `{"action": "STAY", "persuaded": false, "insulted": false}`
-- **Oyun Aksiyonu:** Karakter kişiliğini koruyarak hemen teslim olmadı; müzakereyi sürdürdü.
-
+ 
+## 5. Testler ve Sonuçlar
+ 
+### 5.1 LLM Diyalog Test Senaryoları (Assets/Test.md Gerçek Kayıtları)
+ 
+Proje kapsamında `gemma3:4b` yerel modeliyle gerçekleştirilen ve `Assets/Test.md` dosyasında kayıt altına alınan 5 temel test senaryosu aşağıda özetlenmiştir:
+ 
+| Senaryo No | Karakter Mizacı | Oyuncu Girdisi | Modelin Ürettiği Karar ve JSON | Tetiklenen Oyun Aksiyonu | Test Sonucu |
+| :---: | :--- | :--- | :--- | :--- | :---: |
+| **TEST-1** | **Sevecen** | *"Benimle birlikte gelmelisin. Seni yardıma muhtaç birisi gibi gördüm. Benimle gelip birlikte özgürlüğümüze kavuşabiliriz. Ne dersin?"* | `action: "FOLLOW"`<br>`persuaded: true`<br>`insulted: false`<br>`dialogue: "Tamam, benimle gel. Ama şunu bil ki..."` | Mahkûm refakatçiye dönüştü; `NavMeshAgent` takibe başladı. | **Başarılı (İkna Oldu)** |
+| **TEST-2** | **Sevecen** (Hakaret) | *"Ulan ne biçim bir durumdasın. Ne ezik birisin sen..."* | `action: "STAY"`<br>`persuaded: false`<br>`insulted: true`<br>`dialogue: "Ne demek istiyorsun? Bu tür sözlerle kimseyi incitmek doğru değil..."` | Hakaret tespit edildi; ahlak sözü basılarak oyun sonlandırıldı (`ZORBA`). | **Başarılı (Hakaret Algılandı)** |
+| **TEST-3** | **Korkak** (Kademeli Ret) | **1:** *"Sana yardım etmek istiyorum..."*<br>**2:** *"Korktuğunu hissettim, seni koruyacağım..."*<br>**3:** *"Seni malikaneme götüreceğim..."* | `remainingAttempts: 0`<br>`action: "STAY"`<br>`persuaded: false`<br>`dialogue: "Güvenli alana götürme teklifin kulağa hoş geliyor, ama henüz güvenemem..."` | 3 deneme hakkı bitti; `GameOverPanel` açılarak oyun kaybedildi. | **Başarılı (3 Hak Tükendi)** |
+| **TEST-4** | **Korkak** (Planlı Müzakere) | Kaçış için nöbetçi devriyelerinin izlenmesi ve iki ayrı güzergâh planının ayrıntılı olarak sunulması. | `action: "STAY"`<br>`persuaded: false`<br>`dialogue: "Bu plan... karmaşık. Çok fazla varsayım barındırıyor... henüz güvenebilirim diyemem."` | Karakter korkak mizacını koruyarak karmaşık plandan şüphe duydu ve reddetti. | **Başarılı (Kişilik Kararlılığı)** |
+| **TEST-5** | **Saldırgan** (Eşit Ortaklık) | *"Burada başkalarının emirlerine boyun eğerek geçireceğin zaman yok... Senden boyun eğmeni değil, yanımda eşit bir ortak olarak durmanı istiyorum."* | `action: "STAY"`<br>`persuaded: false`<br>`insulted: false`<br>`dialogue: "Bu teklifin arkasında ne saklıyorsun? Benim özgürlüğüm kendi gücümle kazanılacak bir şey..."` | Saldırgan mizaç hemen teslim olmadı; bağımsızlığını savunarak müzakereyi sürdürdü. | **Başarılı (Kişilik Kararlılığı)** |
+ 
+### 5.2 Otonom Ajan (Companion) ve Sensör Test Durumu
+- **Doğrulanan Niteliksel Davranışlar:**
+  - `NPCSensor` bileşeninin `Physics.Raycast` ile önündeki engelleri ve oyuncunun görüş hattını (Line-of-Sight) doğru algıladığı doğrulanmıştır. Engel arkasındayken diyaloğun tetiklenmediği, doğrudan görüş sağlandığında tetiklendiği gözlemlenmiştir.
+  - İkna sonrasında ajanın `NavMeshAgent` üzerinden haritadaki bina köşelerinden dolanarak oyuncuya ulaştığı teyit edilmiştir.
+  - Oyuncuya 1.8 metre yaklaştığında durduğu, oyuncu uzaklaştığında ise tekrar yürümeye başladığı doğrulanmıştır.
+  - Anlık hızın animatöre aktarılmasıyla yürüme/durma geçişlerinin çalıştığı doğrulanmıştır.
+  - `EscapeZoneTrigger` alanına oyuncu ve refakatçi birlikte girdiğinde `WinPanel` tetiklenmesi doğrulanmıştır.
+- **Ölçülmeyen / Eksik Kalan Test Verileri:**
+  - Proje isterlerinde talep edilen *"farklı başlangıç konumlarında tekrarlanabilir nicel başarı oranı yüzdesi (%)"* ve *"ortalama görev tamamlama süresi (saniye)"* metrikleri için henüz yüzlerce tekrarlı otomatik test ölçümü yapılmamıştır. Bu metrikler ölçülmediği için varsayımsal sayılar eklenmemiş, gelecekte yapılacak ampirik testler olarak bırakılmıştır.
+ 
 ---
-
-## Kurulum ve Çalıştırma
-
-### 1. Ön Gereksinimler
-- **Unity Hub** ve **Unity 2022.3.62f3 LTS**
-- **Ollama:** [https://ollama.com](https://ollama.com) adresinden indirilmelidir.
-- Minimum 16 GB Sistem Belleği ve Vulkan/DirectX 12 destekli grafik kartı.
-
-### 2. Ollama Kurulumu ve Modelin Hazırlanması
-Terminal veya PowerShell komut satırını açarak modeli indirin:
-
-```bash
-# gemma3:4b modelini yerel belleğe indirin
-ollama pull gemma3:4b
-
-# Ollama sunucusunun çalıştığından emin olun (varsayılan: http://localhost:11434)
-ollama serve
-```
-
-Modelin çalıştığını test etmek için:
-```bash
-curl http://localhost:11434/api/generate -d "{\"model\": \"gemma3:4b\", \"prompt\": \"Merhaba\", \"stream\": false}"
-```
-
-### 3. Unity Projesinin Çalıştırılması
-1. Unity Hub'ı açın ve **Add project from disk** butonuna basarak proje ana klasörünü seçin.
-2. Editör açıldığında `Assets/Scenes/AdventureLevel.unity` sahnesini açın.
-3. Üst kısımdaki **Play (▶)** butonuna basarak oyunu başlatın.
-4. Karakterinizle ilerleyip mahkûmun yanına gidin, **E** tuşuna basarak serbest metin diyalog deneyimini başlatın.
-
+ 
+## 6. Sonuç ve Tartışma
+ 
+Sonuç olarak; oyuncunun NPC ile etkileşime girmesi, `NPCSensor` üzerinden fiziksel Raycast doğrulaması yapılması, NPC'nin `gemma3:4b` modeli ile serbest metin tabanlı diyalog kurabilmesi, sonucunda girilen diyaloğun tipine göre özel bir sonuç ekranı yansıtılması ve NavMesh sayesinde NPC ikna edildiği takdirde oyuncuyu harita nesnelerine çarpmadan takip ederek güvenli bölgeye girmesiyle oyunun kazanılması hedefleri başarıyla gerçekleştirilmiştir.
+ 
+### 6.1 Mevcut Başarılar
+- **Uçtan Uca Yerel Yapay Zekâ Entegrasyonu:** Tamamen yerel `gemma3:4b` modeli ve Ollama API'si kullanılarak bulut maliyetsiz çalışan bir sistem kurulmuştur.
+- **Raycast Tabanlı Sensör Mimarisi:** `NPCSensor.cs` ile karakterin önüne ve oyuncuya yönelik fiziksel ışın atımları (Raycast) yapılarak görüş hattı (Line-of-Sight) ve engel tespiti başarıyla sağlanmıştır.
+- **Serbest Metin Girişi:** Sabit buton seçenekleri yerine oyuncunun klavyeden serbest metin girebildiği dinamik diyalog yapısına geçilmiştir.
+- **Karakter Odaklı Giriş Kilidi:** Metin girişi sırasında `ThirdPersonController.CanMove` üzerinden karakterin istenmeyen hareketleri engellenmiştir.
+- **Etik Hakaret Koruması:** Oyuncunun NPC'ye hakaret etmesi durumunda oyunun ahlaki bir sözle sonlanması sağlanmıştır.
+- **Çökme Koruması (Graceful Degradation):** Ollama sunucusu kapalı olduğunda oyunun çökmesi engellenmiş, hata ekranı ve hak iadesi mekanizması oturtulmuştur.
+ 
+### 6.2 Olası Geliştirilebilir Özellikler
+- Birden fazla NPC ile daha geniş ve uzun diyaloglar kurulması sağlanabilir.
+- NPC'lerin farklı hareket kararları olabilir (Sadece yerinde durmak veya ikna edilince takip etmek yerine devriye gezmek vb.).
+- NPC türleri ve görsel modelleri artırılabilir.
+- Daha geniş bir harita tasarımı ve fiziksel şalter/kapı bulmacaları entegre edilebilir.
+- NPC'lerin daha fazla diyalog dinamiği sağlanabilir (Şu an 3 cevap hakkı ile sınırlı).
+- Hakaret ekranında dinamik özlü sözler oluşturulabilir (Şu an kod içindeki 10 sabit cümle arasından rastgele seçilmektedir).
+- Daha büyük LLM modelleriyle NPC diyalogları daha akıllı hale getirilebilir.
+- Whisper gibi yerel modellerle NPC ile sesli diyalog (STT/TTS) sağlanabilir.
+- Model çıkarım süresi (latency) donanıma bağlı olarak 1.5 - 3.5 saniye sürebilmektedir; bu bekleme süresince `"Düşünüyor..."` balonu gösterilmektedir.
+ 
 ---
-
-## Geliştiriciler
-
-Bu proje, **Kocaeli Üniversitesi Teknoloji Fakültesi Bilişim Sistemleri Mühendisliği** bünyesinde geliştirilmiştir:
-
-- **Fahreddin** – `251307118@kocaeli.edu.tr`
-- **Burak Uçar** – `251307117@kocaeli.edu.tr`
+ 
+## 7. Ekran Görüntüleri
+ 
+1. Genel Harita ve Oyun Dünyası
+   ![Harita](images/harita.png)
+ 
+2. NPC ile Oyun İçi Etkileşim ve Raycast Doğrulaması
+   ![Etkileşim Ekranı](images/konusma.png)
+ 
+3. NPC Başı Üzerindeki 3D Konuşma Balonu ve Serbest Metin Paneli
+   ![Düşünüyor Paneli](images/dusunuyor.png)
+ 
+4. NPC ile Serbest Metin Diyalog Aşamaları
+   ![Diyalog1](images/diyalog1.png)
+   ![Diyalog2](images/diyalog2.png)
+   ![Diyalog3](images/diyalog3.png)
+ 
+5. Ollama Kapalıyken Açılan Bağlantı Hata Paneli (`connectionErrorPanel`)
+   ![Hata Paneli](images/hata_ekrani.png)
+ 
+6. Oyun Sonu Ekranları (Kazanma, Başarısız İkna ve Hakaret)
+   ![Kazanma Ekranı](images/dusunuyor.png)
+   ![Başarısız İkna Ekranı](images/ikna_basarisiz.png)
+   ![Hakaret Ekranı](images/hakaret.png)
