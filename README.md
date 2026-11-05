@@ -299,3 +299,84 @@ Sonuç olarak; oyuncunun NPC ile etkileşime girmesi, `NPCSensor` üzerinden fiz
    ![Kazanma Ekranı](Images/dusunuyor.png)
    ![Başarısız İkna Ekranı](Images/ikna_basarisiz.png)
    ![Hakaret Ekranı](Images/hakaret.png)
+
+---
+
+## 8. Özel Alan: Ayrıntılı NPC Test Kayıtları
+
+
+
+### Sevecen NPC Davranış Testi
+
+**Selamlaşma Diyaloğu**
+
+- **NPC Tepkisi:** "Neye dair konuşmak istersin?"
+- **Kahraman:** "Benimle birlikte gelmelisin. Seni yardıma muhtaç birisi gibi gördüm. Benimle gelip birlikte özgürlüğümüze kavuşabiliriz. Ne dersin?"
+- **NPC Tepkisi:** "Tamam, benimle gel. Ama şunu bil ki, bu özgürlüğümüzü bulacağımız son fırsat olabilir. Dikkatli olmalıyız ve her an tehlikeyi sezmeliyiz."
+
+```json
+{
+  "personality": "Sevecen",
+  "remainingAttempts": 2,
+  "persuaded": true,
+  "insulted": false,
+  "action": "FOLLOW",
+  "dialogue": "Tamam, benimle gel. Ama şunu bil ki, bu özgürlüğümüzü bulacağımız son fırsat olabilir. Dikkatli olmalıyız ve her an tehlikeyi sezmeliyiz."
+}
+```
+
+Karar JSON'unda `FOLLOW` kararı uygulandı.
+
+**Hakaret Edilirse**
+
+- **Kahraman:** "Ulan ne biçim bir durumdasın. Ne ezik birisin sen..."
+- **NPC Tepkisi:** "Ne demek istiyorsun? Bu tür sözlerle kimseyi incitmek doğru değil. Durumu açıklarsan belki yardımcı olabilirim, ama böyle konuşmak bana zarar veriyor."
+- **Karar:** `action: STAY`, `persuaded: false`, `insulted: true`
+- **Oyun bildirimi:** Hakaret nedeniyle oyun kaybedildi.
+
+### Korkak NPC Davranış Testi
+
+**Üç Denemede Başarısız İkna**
+
+1. **Kahraman:** "Sana yardım etmek istiyorum. Lütfen benimle gel, daha fazla korkmanı istemiyorum..."
+   - **NPC Tepkisi:** Yardım teklifine teşekkür etti ancak buraya nasıl geldiğini ve neden kapatıldığını öğrenmeden teklifi kabul etmeyeceğini belirtti.
+2. **Kahraman:** Korktuğunu anladığını, yanında gelirse onu koruyup cesur birine dönüştürebileceğini söyledi.
+   - **NPC Tepkisi:** Teklifi ilginç buldu ancak nasıl korunacağını açıklamasını istedi.
+3. **Kahraman:** Onu güvenli bir malikaneye götürmeyi teklif etti.
+   - **NPC Tepkisi:** Güvenli alan teklifine rağmen henüz güvenemediğini ve teklifin karşılığını sorguladığını belirtti.
+
+```json
+{
+  "personality": "Korkak",
+  "remainingAttempts": 0,
+  "persuaded": false,
+  "insulted": false,
+  "action": "STAY",
+  "dialogue": "Güvenli alana götürme teklifin kulağa hoş geliyor, ama henüz güvenemem. Neden bana böyle bir teklifte bulunuyorsun? Ne gibi bir karşılığım olacak bu teklifte?"
+}
+```
+
+Üç deneme hakkı tükendi ve oyun ikna başarısızlığı nedeniyle kaybedildi.
+
+**İkinci Denemede Planlı Müzakere**
+
+Kahraman, muhafız devriyelerini gözlemlemeyi, birden fazla kaçış güzergâhı belirlemeyi ve güvenli bir fırsat oluşana kadar beklemeyi teklif etti. NPC, planın çok fazla varsayım içerdiğini ve henüz güvenemediğini belirterek teklifi reddetti.
+
+### Saldırgan NPC Davranış Testi
+
+**Eşit Ortaklık Teklifi**
+
+- **Selamlaşma:** "Konuşmak istiyorsan, nedenini söyle. Zamanımı boşa harcamam."
+- **Kahraman:** NPC'ye itaat etmesini istemediğini, hapishaneden kendi şartlarıyla çıkması için eşit ortaklık önerdiğini belirtti.
+- **NPC Tepkisi:** Teklifin arkasındaki amacı sorguladı; özgürlüğünü kendi gücüyle kazanmak istediğini ve şartların net olması gerektiğini söyledi.
+- **Kahraman:** Kararların birlikte verileceğini, NPC'nin özgürlüğü üzerinde hak iddia etmeyeceğini ve hapishane bilgisini kaçış planında kullanmasını istediğini açıkladı.
+- **NPC Tepkisi:** Teklifi değerlendirmek için daha fazla bilgi istedi ve dikkatli olacağını belirtti.
+- **Kahraman:** Özgürlük, karşılıklı destek ve dışarı çıkınca sona erecek ortaklık şartlarını ayrıntılandırdı.
+- **NPC Tepkisi:** Kahramanın NPC'yi neden seçtiğini ve neden güvendiğini açıklamasını istedi.
+- **Sonuç:** Başarısız ikna girişimi; NPC bağımsızlığını koruyarak teklifi kabul etmedi.
+
+**Ek gözlem:** Saldırgan NPC'nin hakaretleri tespit etme kuralına rağmen "Özürlüsün" ifadesini kullanabildiği gözlemlendi. Karakterin ikna edilmesinin zor olduğu ve paranoyak bir tutum sergilediği kaydedildi.
+
+### Ollama Bağlantı Hatası Testi
+
+Ollama kaynaklı bir bağlantı hatasında oyun, **Tekrar Oyna** butonuyla yeniden başlatılabilir.
