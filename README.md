@@ -79,39 +79,37 @@ Sensör sistemi iki temel işlevi yerine getirir:
  
 ### 2.4 Companion Karar, Algılama ve Davranış Akış Şeması
  
-```mermaid
 flowchart TD
-    A([Oyun Başlangıcı]) --> B[NPCSensor Devrede: Raycast ile Çevre Taraması]
-    B --> C[NPC Pasif Durumda: isFollowing = false]
-   
-    C --> D{NPCSensor.CanDetect Player?<br/>Raycast Görüş Hattı Net mi?}
+    A([Oyun Başlangıcı]) --> B["NPCSensor Devrede: Raycast ile Çevre Taraması"]
+    B --> C["NPC Pasif Durumda: isFollowing = false"]
+    
+    C --> D{"NPCSensor.CanDetect Player?<br/>Raycast Görüş Hattı Net mi?"}
     D -- Hayır / Engel Var --> C
-    D -- Evet: Oyuncu Algılandı --> E[Ekranda 'E - Konuş' Promptu Gösterilir]
-   
-    E --> F{Oyuncu 'E'ye Bastı mı?}
-    F -- Evet --> G[Ollama Diyalog ve İkna Müzakeresi Başlar]
+    D -- Evet: Oyuncu Algılandı --> E["Ekranda 'E - Konuş' Promptu Gösterilir"]
+    
+    E --> F{"Oyuncu 'E'ye Bastı mı?"}
+    F -- Evet --> G["Ollama Diyalog ve İkna Müzakeresi Başlar"]
     F -- Hayır --> C
-   
-    G --> H{Ollama Kararı: FOLLOW?}
+    
+    G --> H{"Ollama Kararı: FOLLOW?"}
     H -- Hayır / İkna Başarısız --> C
-    H -- Evet: İkna Başarılı --> I[SetFollowing true: isFollowing = true]
-   
-    I --> J[Timer Kontrolü: updateTimer >= 0.2s?]
+    H -- Evet: İkna Başarılı --> I["SetFollowing true: isFollowing = true"]
+    
+    I --> J{"Timer Kontrolü: updateTimer >= 0.2s?"}
     J -- Hayır --> J
-    J -- Evet --> K[Mesafe Ölçümü: Vector3.Distance NPC, Player]
-   
-    K --> L{Mesafe <= 1.8f?}
-    L -- Evet: Oyuncunun Yanında --> M[agent.isStopped = true<br/>agent.ResetPath()]
-    M --> N[Animatör Hızı = 0: Idle Animasyonu]
-   
-    L -- Hayır: Oyuncu Uzakta --> O[agent.isStopped = false<br/>agent.SetDestination player.position]
-    O --> P[Animatör Hızı = agent.velocity.magnitude: Walk Animasyonu]
-   
-    N --> R{EscapeZone Alanına Girildi mi?}
+    J -- Evet --> K["Mesafe Ölçümü: Vector3.Distance(NPC, Player)"]
+    
+    K --> L{"Mesafe <= 1.8f?"}
+    L -- Evet: Oyuncunun Yanında --> M["agent.isStopped = true<br/>agent.ResetPath()"]
+    M --> N["Animatör Hızı = 0: Idle Animasyonu"]
+    
+    L -- Hayır: Oyuncu Uzakta --> O["agent.isStopped = false<br/>agent.SetDestination(player.position)"]
+    O --> P["Animatör Hızı = agent.velocity.magnitude: Walk Animasyonu"]
+    
+    N --> R{"EscapeZone Alanına Girildi mi?"}
     P --> R
     R -- Evet + Oyuncu da Alanda --> S([OYUN KAZANILDI - WinPanel])
     R -- Hayır --> J
-```
  
 ---
  
