@@ -38,6 +38,7 @@ private StarterAssets.ThirdPersonController playerMovementController;
 
     [Header("Ollama Bağlantı Hata Ekranı")]
 [SerializeField] private GameObject connectionErrorPanel;
+[SerializeField] private TMP_Text errorText;
 [SerializeField] private Button retryButton;
 
     [Header("NPC Takip")]
@@ -543,7 +544,6 @@ private void HandleOllamaError(string error)
 
     isWaitingForResponse = false;
 
-    // Diyalog ekranlarını kapat.
     SetChoicePanelVisible(false);
 
     if (dialogueUI != null)
@@ -552,13 +552,54 @@ private void HandleOllamaError(string error)
     if (choiceNPCMessageText != null)
         choiceNPCMessageText.text = "";
 
-    // Oyuncu kontrollerini devre dışı bırak.
     SetButtonsInteractable(false);
 
     if (playerMovementController != null)
         playerMovementController.enabled = false;
 
-    // Bağlantı hata ekranını aç.
+    // Hata kategorisini JSON üzerinden al.
+    OllamaService.OllamaErrorInfo errorInfo = null;
+
+    try
+    {
+        errorInfo = JsonUtility.FromJson<OllamaService.OllamaErrorInfo>(
+            error
+        );
+    }
+    catch (System.Exception e)
+    {
+        Debug.LogWarning("Hata bilgisi ayrıştırılamadı: " + e.Message);
+    }
+
+    if (errorText != null)
+    {
+        string title = "BİR HATA OLUŞTU";
+
+        if (errorInfo != null)
+        {
+            switch (errorInfo.category)
+            {
+                case "CONNECTION":
+                    title = "OLLAMA BAĞLANTI HATASI";
+                    break;
+
+                case "TIMEOUT":
+                    title = "OLLAMA ZAMAN AŞIMI";
+                    break;
+
+                case "MODEL_MEMORY":
+                    title = "MODEL / BELLEK HATASI";
+                    break;
+
+                case "MODEL_ERROR":
+                    title = "OLLAMA MODEL HATASI";
+                    break;
+            }
+        }
+
+        errorText.text = title+"\nHatayı düzeltebilirsen sorunsuzca butona basıp oynayabilirsin.";
+    }
+
     if (connectionErrorPanel != null)
     {
         connectionErrorPanel.SetActive(true);
@@ -569,8 +610,7 @@ private void HandleOllamaError(string error)
             "ConnectionErrorPanel Inspector'da atanmamış!",
             this);
     }
-}
-    private IEnumerator ShowFinalFailureAfterDelay(float delay)
+}    private IEnumerator ShowFinalFailureAfterDelay(float delay)
     {
         yield return new WaitForSeconds(delay);
         ShowLoseScreen("", false);
