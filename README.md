@@ -282,23 +282,23 @@ Sonuç olarak; oyuncunun NPC ile etkileşime girmesi, `NPCSensor` üzerinden fiz
 ## 7. Ekran Görüntüleri
  
 1. Genel Harita ve Oyun Dünyası
-   ![Harita](images/harita.png)
+   ![Harita](Images/harita.png)
  
 2. NPC ile Oyun İçi Etkileşim ve Raycast Doğrulaması
-   ![Etkileşim Ekranı](images/konusma.png)
+   ![Etkileşim Ekranı](Images/konusma.png)
  
 3. NPC Başı Üzerindeki 3D Konuşma Balonu ve Serbest Metin Paneli
-   ![Düşünüyor Paneli](images/dusunuyor.png)
+   ![Düşünüyor Paneli](Images/dusunuyor.png)
  
 4. NPC ile Serbest Metin Diyalog Aşamaları
-   ![Diyalog1](images/diyalog1.png)
-   ![Diyalog2](images/diyalog2.png)
-   ![Diyalog3](images/diyalog3.png)
+   ![Diyalog1](Images/diyalog1.png)
+   ![Diyalog2](Images/diyalog2.png)
+   ![Diyalog3](Images/diyalog3.png)
  
 5. Ollama Kapalıyken Açılan Bağlantı Hata Paneli (`connectionErrorPanel`)
-   ![Hata Paneli](images/hata_ekrani.png)
+   ![Hata Paneli](Images/hata_ekrani.png)
  
 6. Oyun Sonu Ekranları (Kazanma, Başarısız İkna ve Hakaret)
-   ![Kazanma Ekranı](images/dusunuyor.png)
-   ![Başarısız İkna Ekranı](images/ikna_basarisiz.png)
-   ![Hakaret Ekranı](images/hakaret.png)
+   ![Kazanma Ekranı](Images/dusunuyor.png)
+   ![Başarısız İkna Ekranı](Images/ikna_basarisiz.png)
+   ![Hakaret Ekranı](Images/hakaret.png)
